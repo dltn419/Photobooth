@@ -31,7 +31,8 @@ export function CameraView({ onComplete, onCancel }: Props) {
   const [currentShot, setCurrentShot] = useState(0);
   const [flash, setFlash] = useState(false);
   const [overlayImg, setOverlayImg] = useState<HTMLImageElement | null>(null);
-  
+
+  const stageRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
 
   const activeSlotIndex = slotIndexForShot(currentShot);
@@ -54,7 +55,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 줌 배율 및 위치 산출
+  // 프레임 이동 및 줌 스케일 산출
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -91,65 +92,60 @@ export function CameraView({ onComplete, onCancel }: Props) {
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [화면 뷰포트 기반 정밀 캡처 함수]
+  // [눈에 보이는 화면 그대로 100% 자르는 직접 DOM 매핑 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
-    if (!video || !slot || !video.videoWidth) return null;
+    const stage = stageRef.current;
+    if (!video || !slot || !stage || !video.videoWidth) return null;
 
-    // 1. 결과물이 들어갈 슬롯 캔버스 생성
+    // 1. 결과물이 담길 슬롯 사이즈 캔버스 생성
     const canvas = document.createElement('canvas');
     canvas.width = slot.w;
     canvas.height = slot.h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 2. 비디오의 object-cover 계산 (비디오 중앙 크롭 영역 산출)
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const videoAspect = vw / vh;
-    const stageAspect = FRAME_W / FRAME_H;
+    // 2. 화면상 실제 렌더링 영역(픽셀) 측정
+    const videoRect = video.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
 
-    let sWidth = vw;
-    let sHeight = vh;
-    let sX = 0;
-    let sY = 0;
+    // 스테이지 내에서 화면 중앙에 보이는 실제 빨간 박스의 Screen 좌표 계산
+    const scaleX = stageRect.width / FRAME_W;
+    const scaleY = stageRect.height / FRAME_H;
 
-    if (videoAspect > stageAspect) {
-      sWidth = vh * stageAspect;
-      sX = (vw - sWidth) / 2;
-    } else {
-      sHeight = vw / stageAspect;
-      sY = (vh - sHeight) / 2;
-    }
+    // UI상 확대/이동 보정이 적용된 빨간 박스 중심점의 Screen 좌표
+    const boxCenterX = stageRect.left + stageRect.width / 2;
+    const boxCenterY = stageRect.top + stageRect.height / 2;
 
-    // 3. UI의 Scale/Translate 이동에 대응되는 비디오 원본 좌표계의 바운딩 박스 계산
-    const slotCenterX = slot.x + slot.w / 2;
-    const slotCenterY = slot.y + slot.h / 2;
+    const boxWidthOnScreen = slot.w * scaleX * frameScale;
+    const boxHeightOnScreen = slot.h * scaleY * frameScale;
 
-    // 줌 배율이 반영된 실제 자를 비디오 크기
-    const cropSWidth = (slot.w / FRAME_W) * (sWidth / frameScale);
-    const cropSHeight = (slot.h / FRAME_H) * (sHeight / frameScale);
+    const boxLeftOnScreen = boxCenterX - boxWidthOnScreen / 2;
+    const boxTopOnScreen = boxCenterY - boxHeightOnScreen / 2;
 
-    // 슬롯 중심점의 비디오 내부 위치
-    const slotCenterXInVideo = sX + (slotCenterX / FRAME_W) * sWidth;
-    const slotCenterYInVideo = sY + (slotCenterY / FRAME_H) * sHeight;
+    // 3. 화면 좌표를 카메라 Video 원본 데이터 좌표계로 변환
+    const videoScaleX = video.videoWidth / videoRect.width;
+    const videoScaleY = video.videoHeight / videoRect.height;
 
-    const cropSX = slotCenterXInVideo - cropSWidth / 2;
-    const cropSY = slotCenterYInVideo - cropSHeight / 2;
+    let sourceX = (boxLeftOnScreen - videoRect.left) * videoScaleX;
+    const sourceY = (boxTopOnScreen - videoRect.top) * videoScaleY;
+    const sourceWidth = boxWidthOnScreen * videoScaleX;
+    const sourceHeight = boxHeightOnScreen * videoScaleY;
 
-    // 4. 셀카 좌우 반전 처리
+    // 4. 셀카 좌우 반전 위치 보정
     if (facing === 'user') {
+      sourceX = video.videoWidth - sourceX - sourceWidth;
       ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
-    // 5. 정밀한 크롭 영역 렌더링
+    // 5. 화면에 보이던 빨간 박스 그대로 캡처
     ctx.drawImage(
       video,
-      cropSX,
-      cropSY,
-      cropSWidth,
-      cropSHeight,
+      Math.max(0, sourceX),
+      Math.max(0, sourceY),
+      sourceWidth,
+      sourceHeight,
       0,
       0,
       slot.w,
@@ -174,7 +170,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
       const data = captureVisibleArea(slot);
-      
+
       if (data) {
         setFlash(true);
         setTimeout(() => setFlash(false), 300);
@@ -237,7 +233,10 @@ export function CameraView({ onComplete, onCancel }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-        <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
+        <div 
+          ref={stageRef}
+          className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black"
+        >
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
