@@ -32,7 +32,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
   const [flash, setFlash] = useState(false);
   const [overlayImg, setOverlayImg] = useState<HTMLImageElement | null>(null);
   
-  const stageRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
 
   const activeSlotIndex = slotIndexForShot(currentShot);
@@ -55,7 +54,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 오버레이 줌/이동 계산
+  // 프레임 줌 배율 및 위치 산출
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -92,66 +91,72 @@ export function CameraView({ onComplete, onCancel }: Props) {
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [화면에 보이는 정면 구도 100% 보장 캡처]
+  // [화면 뷰포트 기반 정밀 캡처 함수]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
     if (!video || !slot || !video.videoWidth) return null;
 
-    // 1. 실제 비디오 크롭용 임시 캔버스 생성
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = FRAME_W;
-    tempCanvas.height = FRAME_H;
-    const ctx = tempCanvas.getContext('2d');
+    // 1. 결과물이 들어갈 슬롯 캔버스 생성
+    const canvas = document.createElement('canvas');
+    canvas.width = slot.w;
+    canvas.height = slot.h;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 2. 비디오 비율을 9:16 프레임 크기(1080x1920)로 꽉 차게 렌더링
-    const vWidth = video.videoWidth;
-    const vHeight = video.videoHeight;
-    const vAspect = vWidth / vHeight;
-    const fAspect = FRAME_W / FRAME_H;
+    // 2. 비디오의 object-cover 계산 (비디오 중앙 크롭 영역 산출)
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const videoAspect = vw / vh;
+    const stageAspect = FRAME_W / FRAME_H;
 
-    let sx = 0, sy = 0, sw = vWidth, sh = vHeight;
-    if (vAspect > fAspect) {
-      sw = vHeight * fAspect;
-      sx = (vWidth - sw) / 2;
+    let sWidth = vw;
+    let sHeight = vh;
+    let sX = 0;
+    let sY = 0;
+
+    if (videoAspect > stageAspect) {
+      sWidth = vh * stageAspect;
+      sX = (vw - sWidth) / 2;
     } else {
-      sh = vWidth / fAspect;
-      sy = (vHeight - sh) / 2;
+      sHeight = vw / stageAspect;
+      sY = (vh - sHeight) / 2;
     }
 
+    // 3. UI의 Scale/Translate 이동에 대응되는 비디오 원본 좌표계의 바운딩 박스 계산
+    const slotCenterX = slot.x + slot.w / 2;
+    const slotCenterY = slot.y + slot.h / 2;
+
+    // 줌 배율이 반영된 실제 자를 비디오 크기
+    const cropSWidth = (slot.w / FRAME_W) * (sWidth / frameScale);
+    const cropSHeight = (slot.h / FRAME_H) * (sHeight / frameScale);
+
+    // 슬롯 중심점의 비디오 내부 위치
+    const slotCenterXInVideo = sX + (slotCenterX / FRAME_W) * sWidth;
+    const slotCenterYInVideo = sY + (slotCenterY / FRAME_H) * sHeight;
+
+    const cropSX = slotCenterXInVideo - cropSWidth / 2;
+    const cropSY = slotCenterYInVideo - cropSHeight / 2;
+
+    // 4. 셀카 좌우 반전 처리
     if (facing === 'user') {
-      ctx.translate(FRAME_W, 0);
+      ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, FRAME_W, FRAME_H);
-
-    // 3. 줌/이동이 적용되었을 때, 빨간 테두리 내부(슬롯 구역)만 정확히 잘라내기
-    const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = slot.w;
-    finalCanvas.height = slot.h;
-    const finalCtx = finalCanvas.getContext('2d');
-    if (!finalCtx) return null;
-
-    // 줌 역산 계산
-    const cropW = slot.w / frameScale;
-    const cropH = slot.h / frameScale;
-    const cropX = (slot.x + slot.w / 2) - cropW / 2;
-    const cropY = (slot.y + slot.h / 2) - cropH / 2;
-
-    finalCtx.drawImage(
-      tempCanvas,
-      cropX,
-      cropY,
-      cropW,
-      cropH,
+    // 5. 정밀한 크롭 영역 렌더링
+    ctx.drawImage(
+      video,
+      cropSX,
+      cropSY,
+      cropSWidth,
+      cropSHeight,
       0,
       0,
       slot.w,
       slot.h
     );
 
-    return finalCanvas.toDataURL('image/jpeg', 0.95);
+    return canvas.toDataURL('image/jpeg', 0.95);
   }, [facing, frameScale, videoRef]);
 
   const runSequence = useCallback(async () => {
@@ -232,10 +237,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-        <div 
-          ref={stageRef}
-          className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black"
-        >
+        <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
