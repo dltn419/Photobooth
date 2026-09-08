@@ -53,7 +53,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 오버레이 캔버스 제어
+  // 프레임 오버레이 캔버스 그려주기
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -74,17 +74,11 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // [요청 반영] 촬영 중일 때 카메라 화면 줌 없이 오버레이 상에서 해당 구역 좌표 + 여유 패딩(40px)으로 가이드라인 표시
+    // 촬영 중일 때 현재 촬영 칸 주변에 빨간 가이드라인 표시
     if (zooming && activeSlot) {
-      const padding = 40; // 40px 여유 공간
-      const gx = Math.max(0, activeSlot.x - padding);
-      const gy = Math.max(0, activeSlot.y - padding);
-      const gw = Math.min(FRAME_W - gx, activeSlot.w + padding * 2);
-      const gh = Math.min(FRAME_H - gy, activeSlot.h + padding * 2);
-
-      ctx.strokeStyle = '#FF3B30'; // 눈에 잘 띄는 빨간색 가이드 테두리
+      ctx.strokeStyle = '#FF3B30';
       ctx.lineWidth = 8;
-      ctx.strokeRect(gx, gy, gw, gh);
+      ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
@@ -102,7 +96,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
-      // 실제 구역 좌표값에 맞춰 깔끔하게 캡처
       const data = capture(slot);
       if (data) {
         setFlash(true);
@@ -151,6 +144,22 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
+  // --- [프레임 분리 확대 계산식 (40px 여유 영역 반영)] ---
+  const padding = 40;
+  const targetW = activeSlot ? activeSlot.w + padding * 2 : FRAME_W;
+  const targetH = activeSlot ? activeSlot.h + padding * 2 : FRAME_H;
+  const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
+  const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
+
+  // 1. 프레임용 줌 스케일
+  const frameScale = activeSlot
+    ? Math.min(FRAME_W / targetW, FRAME_H / targetH)
+    : 1;
+
+  // 2. 프레임용 중심점 이동 거리 (%)
+  const frameOffsetX = activeSlot ? ((FRAME_W / 2 - targetCenterX) / FRAME_W) * 100 : 0;
+  const frameOffsetY = activeSlot ? ((FRAME_H / 2 - targetCenterY) / FRAME_H) * 100 : 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-sm border-b border-brand-100">
@@ -167,7 +176,8 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
-          {/* [핵심 수정] 비디오 확대/이동(scale/translate) 전면 제거 -> 웹캠 고정 */}
+          
+          {/* 1. 카메라는 절대 확대/이동하지 않고 원래 뷰로 고정 */}
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
@@ -177,13 +187,25 @@ export function CameraView({ onComplete, onCancel }: Props) {
               className="absolute inset-0 w-full h-full object-cover"
               style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
             />
-            <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+          </div>
+
+          {/* 2. 프레임(오버레이)만 독립적으로 40px 여유를 주고 이동 및 확대 */}
+          <div
+            className="absolute inset-0 pointer-events-none transition-transform duration-500 ease-in-out"
+            style={{
+              transform: zooming
+                ? `translate(${frameOffsetX}%, ${frameOffsetY}%) scale(${frameScale})`
+                : 'none',
+              transformOrigin: 'center center',
+            }}
+          >
+            <canvas ref={overlayRef} className="absolute inset-0 w-full h-full" />
           </div>
 
           {flash && <div className="flash-overlay animate-flash" />}
 
           {phase === 'countdown' && countdown > 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
               <span
                 key={countdown}
                 className="font-display text-8xl text-white drop-shadow-lg animate-pop"
@@ -195,7 +217,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
           )}
 
           {phase === 'shooting' && countdown === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
               <span className="font-display text-5xl text-white drop-shadow-lg animate-pop">
                 찰칵!
               </span>
