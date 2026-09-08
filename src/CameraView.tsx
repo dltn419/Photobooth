@@ -36,7 +36,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
   const activeSlotIndex = slotIndexForShot(currentShot);
   const activeTake = takeIndexForShot(currentShot);
   const activeSlot = selectedFrame.slots[activeSlotIndex];
-  const isCapturing = phase === 'countdown' || phase === 'shooting';
+  const zooming = phase === 'countdown' || phase === 'shooting';
 
   useEffect(() => {
     startCamera(facing);
@@ -53,7 +53,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 오버레이 및 캔버스 프레임 그리기
+  // 프레임 오버레이 캔버스 제어
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -74,13 +74,13 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 촬영 중일 때 현재 촬영 중인 '칸' 가이드라인 테두리 표시
-    if (isCapturing && activeSlot) {
-      ctx.strokeStyle = '#FF3B30'; // 눈에 잘 띄는 강조 테두리
-      ctx.lineWidth = 12;
+    // 디지털 줌 연출을 위해 가이드는 깔끔한 흰색 테두리로 표시
+    if (zooming && activeSlot) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 8;
       ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
     }
-  }, [selectedFrame, overlayImg, isCapturing, activeSlot]);
+  }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
@@ -96,8 +96,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
-      
-      // 실제 크롭 및 캡처는 slot 정보를 넘겨서 캔버스 기준 규격대로 진행됩니다.
       const data = capture(slot);
       if (data) {
         setFlash(true);
@@ -146,6 +144,11 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
+  // [해결책 A 핵심] 사용자는 몸을 움직이지 않도록 비디오 중앙을 기준으로 현재 Slot 크기 비율에 맞게 디지털 줌 계산
+  const slotScale = activeSlot
+    ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) * 0.85
+    : 1;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-sm border-b border-brand-100">
@@ -161,9 +164,15 @@ export function CameraView({ onComplete, onCancel }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-        {/* 카메라 화면 영역: transform 수동 확대/이동을 제거하여 카메라 영상은 고정 유지 */}
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
-          <div className="absolute inset-0 camera-stage">
+          {/* 중앙 기준 디지털 줌 적용 영역 */}
+          <div
+            className="absolute inset-0 camera-stage transition-transform duration-500 ease-out"
+            style={{
+              transform: zooming ? `scale(${slotScale})` : 'scale(1)',
+              transformOrigin: 'center center',
+            }}
+          >
             <video
               ref={videoRef}
               autoPlay
@@ -198,13 +207,13 @@ export function CameraView({ onComplete, onCancel }: Props) {
           )}
 
           {(phase === 'countdown' || phase === 'shooting') && (
-            <div className="absolute top-3 left-3 bg-black/60 text-white text-sm px-3 py-1 rounded-full font-body">
+            <div className="absolute top-3 left-3 bg-black/60 text-white text-sm px-3 py-1 rounded-full font-body z-10">
               칸 {activeSlotIndex + 1} · {activeTake + 1}/{SHOTS_PER_SLOT} · {currentShot + 1}/{TOTAL_SHOTS}
             </div>
           )}
 
           {error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 text-white p-6 text-center gap-3">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 text-white p-6 text-center gap-3 z-20">
               <AlertCircle size={40} className="text-brand-400" />
               <p className="text-sm font-body">{error}</p>
               <button
@@ -217,7 +226,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
           )}
 
           {!isStreaming && !error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-6 text-center gap-3">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-6 text-center gap-3 z-20">
               <CameraOff size={40} className="text-gray-400" />
               <p className="text-sm font-body text-gray-300">카메라를 시작하는 중...</p>
             </div>
