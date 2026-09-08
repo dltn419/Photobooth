@@ -23,7 +23,7 @@ type Props = {
 };
 
 export function CameraView({ onComplete, onCancel }: Props) {
-  const { videoRef, isStreaming, facing, error, startCamera, switchCamera, capture, stopCamera } = useCamera();
+  const { videoRef, isStreaming, facing, error, startCamera, switchCamera, stopCamera } = useCamera();
   const [selectedFrame, setSelectedFrame] = useState<FrameTemplate>(builtinFrames[0]);
   const [phase, setPhase] = useState<'idle' | 'countdown' | 'shooting' | 'done'>('idle');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
@@ -53,7 +53,17 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 오버레이 캔버스 그려주기
+  // 프레임 줌 및 이동 계산식
+  const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
+  const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
+
+  const rawScale = activeSlot ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) : 1;
+  const frameScale = activeSlot ? rawScale * 0.75 : 1;
+
+  const frameOffsetX = activeSlot ? ((FRAME_W / 2 - targetCenterX) / FRAME_W) * 100 * frameScale : 0;
+  const frameOffsetY = activeSlot ? ((FRAME_H / 2 - targetCenterY) / FRAME_H) * 100 * frameScale : 0;
+
+  // 프레임 오버레이 캔버스 그리기
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -74,13 +84,78 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 촬영 중일 때 가이드라인 표시
     if (zooming && activeSlot) {
       ctx.strokeStyle = '#FF3B30';
       ctx.lineWidth = 10;
       ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
+
+  // [핵심] 사용자가 보는 '빨간 테두리 내부 화면'을 정확히 계산해서 캡처하는 함수
+  const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
+    const video = videoRef.current;
+    if (!video || !slot) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = slot.w;
+    canvas.height = slot.h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+
+    // 1. 비디오와 캔버스 스케일링 비율 계산
+    const videoAspect = vw / vh;
+    const frameAspect = FRAME_W / FRAME_H;
+
+    let renderW = vw;
+    let renderH = vh;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (videoAspect > frameAspect) {
+      renderW = vh * frameAspect;
+      offsetX = (vw - renderW) / 2;
+    } else {
+      renderH = vw / frameAspect;
+      offsetY = (vh - renderH) / 2;
+    }
+
+    // 2. 줌 및 이동 역산으로 비디오 상의 실제 크롭 영역 구하기
+    const cropW = (slot.w / frameScale) * (renderW / FRAME_W);
+    const cropH = (slot.h / frameScale) * (renderH / FRAME_H);
+
+    const slotCenterXInFrame = slot.x + slot.w / 2;
+    const slotCenterYInFrame = slot.y + slot.h / 2;
+
+    const cropCenterX = offsetX + (slotCenterXInFrame / FRAME_W) * renderW;
+    const cropCenterY = offsetY + (slotCenterYInFrame / FRAME_H) * renderH;
+
+    const cropX = cropCenterX - cropW / 2;
+    const cropY = cropCenterY - cropH / 2;
+
+    // 좌우 반전 처리
+    if (facing === 'user') {
+      ctx.translate(slot.w, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(
+      video,
+      Math.max(0, cropX),
+      Math.max(0, cropY),
+      cropW,
+      cropH,
+      0,
+      0,
+      slot.w,
+      slot.h
+    );
+
+    return canvas.toDataURL('image/jpeg', 0.95);
+  }, [facing, frameScale, videoRef]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
@@ -96,7 +171,9 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
-      const data = capture(slot);
+      
+      // 빨간 테두리 내부 가이드대로 자르기 수행
+      const data = captureVisibleArea(slot);
       if (data) {
         setFlash(true);
         setTimeout(() => setFlash(false), 300);
@@ -116,7 +193,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     }
 
     setPhase('done');
-  }, [capture, selectedFrame]);
+  }, [captureVisibleArea, selectedFrame]);
 
   const handleStart = () => {
     setShots([]);
@@ -144,18 +221,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // --- [줌 및 중앙 이동 정밀 조정] ---
-  const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
-  const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
-
-  // 1. 모서리가 날아가지 않도록 기존 대비 확대 배율을 줄임 (0.75 안전 배율)
-  const rawScale = activeSlot ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) : 1;
-  const frameScale = activeSlot ? rawScale * 0.75 : 1;
-
-  // 2. 해당 칸이 모서리에 있더라도 화면 정확한 '중앙'에 오도록 이동 거리 보정 계산
-  const frameOffsetX = activeSlot ? ((FRAME_W / 2 - targetCenterX) / FRAME_W) * 100 * frameScale : 0;
-  const frameOffsetY = activeSlot ? ((FRAME_H / 2 - targetCenterY) / FRAME_H) * 100 * frameScale : 0;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-sm border-b border-brand-100">
@@ -172,8 +237,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
-          
-          {/* 1. 카메라는 완전 고정 */}
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
@@ -185,7 +248,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
             />
           </div>
 
-          {/* 2. 프레임만 적절한 스케일과 강력한 이동값으로 중앙 조명 */}
           <div
             className="absolute inset-0 pointer-events-none transition-transform duration-500 ease-in-out"
             style={{
