@@ -55,7 +55,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 이동 및 줌 스케일 산출
+  // 프레임 이동 및 줌 스케일 계산
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -92,28 +92,27 @@ export function CameraView({ onComplete, onCancel }: Props) {
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [눈에 보이는 화면 그대로 100% 자르는 직접 DOM 매핑 캡처]
+  // [가로세로 비율 왜곡 보정 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
     const stage = stageRef.current;
     if (!video || !slot || !stage || !video.videoWidth) return null;
 
-    // 1. 결과물이 담길 슬롯 사이즈 캔버스 생성
+    // 1. 슬롯의 원본 비율 해상도로 최종 Output 캔버스 생성
     const canvas = document.createElement('canvas');
     canvas.width = slot.w;
     canvas.height = slot.h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 2. 화면상 실제 렌더링 영역(픽셀) 측정
+    // 2. 화면상 실제 영역 측정
     const videoRect = video.getBoundingClientRect();
     const stageRect = stage.getBoundingClientRect();
 
-    // 스테이지 내에서 화면 중앙에 보이는 실제 빨간 박스의 Screen 좌표 계산
     const scaleX = stageRect.width / FRAME_W;
     const scaleY = stageRect.height / FRAME_H;
 
-    // UI상 확대/이동 보정이 적용된 빨간 박스 중심점의 Screen 좌표
+    // 3. UI상 화면에 보이는 빨간 테두리의 Screen Pixel 위치 산출
     const boxCenterX = stageRect.left + stageRect.width / 2;
     const boxCenterY = stageRect.top + stageRect.height / 2;
 
@@ -123,23 +122,38 @@ export function CameraView({ onComplete, onCancel }: Props) {
     const boxLeftOnScreen = boxCenterX - boxWidthOnScreen / 2;
     const boxTopOnScreen = boxCenterY - boxHeightOnScreen / 2;
 
-    // 3. 화면 좌표를 카메라 Video 원본 데이터 좌표계로 변환
+    // 4. Screen 좌표 -> 비디오 원본 픽셀 좌표계 변환
     const videoScaleX = video.videoWidth / videoRect.width;
     const videoScaleY = video.videoHeight / videoRect.height;
 
     let sourceX = (boxLeftOnScreen - videoRect.left) * videoScaleX;
     const sourceY = (boxTopOnScreen - videoRect.top) * videoScaleY;
-    const sourceWidth = boxWidthOnScreen * videoScaleX;
-    const sourceHeight = boxHeightOnScreen * videoScaleY;
+    let sourceWidth = boxWidthOnScreen * videoScaleX;
+    let sourceHeight = boxHeightOnScreen * videoScaleY;
 
-    // 4. 셀카 좌우 반전 위치 보정
+    // 5. [핵심] 찌그러짐 방지 - Target Slot 비율(slot.w / slot.h)에 맞춰 Source 크기를 강제 고정
+    const targetAspect = slot.w / slot.h;
+    const currentAspect = sourceWidth / sourceHeight;
+
+    if (currentAspect > targetAspect) {
+      // 가로가 넓으면 가로를 줄여서 비율을 맞춤
+      const newWidth = sourceHeight * targetAspect;
+      sourceX += (sourceWidth - newWidth) / 2;
+      sourceWidth = newWidth;
+    } else {
+      // 세로가 길면 세로를 줄여서 비율을 맞춤
+      const newHeight = sourceWidth / targetAspect;
+      sourceHeight = newHeight;
+    }
+
+    // 6. 셀카 좌우 반전 위치 보정
     if (facing === 'user') {
       sourceX = video.videoWidth - sourceX - sourceWidth;
       ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
-    // 5. 화면에 보이던 빨간 박스 그대로 캡처
+    // 7. 정밀 크롭 및 1:1 맵핑 매칭
     ctx.drawImage(
       video,
       Math.max(0, sourceX),
