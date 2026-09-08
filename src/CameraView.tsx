@@ -53,7 +53,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 오버레이 캔버스 제어
+  // 프레임 오버레이 캔버스 그려주기
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -74,10 +74,10 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 디지털 줌 연출을 위해 가이드는 깔끔한 흰색 테두리로 표시
+    // 촬영 중일 때 현재 촬영 칸에 하이라이트 테두리
     if (zooming && activeSlot) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.lineWidth = 8;
+      ctx.strokeStyle = '#FF3B30';
+      ctx.lineWidth = 10;
       ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
@@ -144,9 +144,14 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // [해결책 A 핵심] 사용자는 몸을 움직이지 않도록 비디오 중앙을 기준으로 현재 Slot 크기 비율에 맞게 디지털 줌 계산
-  const slotScale = activeSlot
-    ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) * 0.85
+  // --- [좌표값 및 확대 비율 정밀 보정 계산식] ---
+  // 1. 해당 칸의 중심점 (0 ~ 1 비율 좌표)
+  const ox = activeSlot ? (activeSlot.x + activeSlot.w / 2) / FRAME_W : 0.5;
+  const oy = activeSlot ? (activeSlot.y + activeSlot.h / 2) / FRAME_H : 0.5;
+
+  // 2. 잘림 방지를 고려한 안전 확대 배율 (0.75 여유값 곱함)
+  const zoomScale = activeSlot
+    ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) * 0.75
     : 1;
 
   return (
@@ -165,11 +170,13 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
-          {/* 중앙 기준 디지털 줌 적용 영역 */}
+          {/* 각 칸 좌표(ox, oy) 중심 이동 및 잘림 방지 줌 비율 적용 */}
           <div
-            className="absolute inset-0 camera-stage transition-transform duration-500 ease-out"
+            className="absolute inset-0 camera-stage transition-transform duration-500 ease-in-out"
             style={{
-              transform: zooming ? `scale(${slotScale})` : 'scale(1)',
+              transform: zooming
+                ? `translate(${(0.5 - ox) * 100}%, ${(0.5 - oy) * 100}%) scale(${zoomScale})`
+                : 'none',
               transformOrigin: 'center center',
             }}
           >
