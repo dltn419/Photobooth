@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Gugi&family=Black+Han+Sans&family=Gowun+Dodum&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Gowun Dodum', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+/* Hide scrollbars on horizontal thumbnail strips */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.camera-stage {
+  transition: transform 0.45s ease;
+}
+
+/* Flash overlay */
+.flash-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: white;
+  z-index: 50;
+}
