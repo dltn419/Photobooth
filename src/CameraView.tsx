@@ -53,7 +53,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 오버레이 캔버스 그려주기
+  // 프레임 오버레이 캔버스 제어
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -74,11 +74,17 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 촬영 중일 때 현재 촬영 칸에 하이라이트 테두리
+    // [요청 반영] 촬영 중일 때 카메라 화면 줌 없이 오버레이 상에서 해당 구역 좌표 + 여유 패딩(40px)으로 가이드라인 표시
     if (zooming && activeSlot) {
-      ctx.strokeStyle = '#FF3B30';
-      ctx.lineWidth = 10;
-      ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
+      const padding = 40; // 40px 여유 공간
+      const gx = Math.max(0, activeSlot.x - padding);
+      const gy = Math.max(0, activeSlot.y - padding);
+      const gw = Math.min(FRAME_W - gx, activeSlot.w + padding * 2);
+      const gh = Math.min(FRAME_H - gy, activeSlot.h + padding * 2);
+
+      ctx.strokeStyle = '#FF3B30'; // 눈에 잘 띄는 빨간색 가이드 테두리
+      ctx.lineWidth = 8;
+      ctx.strokeRect(gx, gy, gw, gh);
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
@@ -96,6 +102,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
+      // 실제 구역 좌표값에 맞춰 깔끔하게 캡처
       const data = capture(slot);
       if (data) {
         setFlash(true);
@@ -144,16 +151,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // --- [좌표값 및 확대 비율 정밀 보정 계산식] ---
-  // 1. 해당 칸의 중심점 (0 ~ 1 비율 좌표)
-  const ox = activeSlot ? (activeSlot.x + activeSlot.w / 2) / FRAME_W : 0.5;
-  const oy = activeSlot ? (activeSlot.y + activeSlot.h / 2) / FRAME_H : 0.5;
-
-  // 2. 잘림 방지를 고려한 안전 확대 배율 (0.75 여유값 곱함)
-  const zoomScale = activeSlot
-    ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) * 0.75
-    : 1;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-sm border-b border-brand-100">
@@ -170,16 +167,8 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
-          {/* 각 칸 좌표(ox, oy) 중심 이동 및 잘림 방지 줌 비율 적용 */}
-          <div
-            className="absolute inset-0 camera-stage transition-transform duration-500 ease-in-out"
-            style={{
-              transform: zooming
-                ? `translate(${(0.5 - ox) * 100}%, ${(0.5 - oy) * 100}%) scale(${zoomScale})`
-                : 'none',
-              transformOrigin: 'center center',
-            }}
-          >
+          {/* [핵심 수정] 비디오 확대/이동(scale/translate) 전면 제거 -> 웹캠 고정 */}
+          <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
               autoPlay
