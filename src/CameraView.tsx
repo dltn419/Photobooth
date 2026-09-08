@@ -74,10 +74,10 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 촬영 중일 때 현재 촬영 칸 주변에 빨간 가이드라인 표시
+    // 촬영 중일 때 가이드라인 표시
     if (zooming && activeSlot) {
       ctx.strokeStyle = '#FF3B30';
-      ctx.lineWidth = 8;
+      ctx.lineWidth = 10;
       ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
@@ -144,21 +144,17 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // --- [프레임 분리 확대 계산식 (40px 여유 영역 반영)] ---
-  const padding = 40;
-  const targetW = activeSlot ? activeSlot.w + padding * 2 : FRAME_W;
-  const targetH = activeSlot ? activeSlot.h + padding * 2 : FRAME_H;
+  // --- [줌 및 중앙 이동 정밀 조정] ---
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
-  // 1. 프레임용 줌 스케일
-  const frameScale = activeSlot
-    ? Math.min(FRAME_W / targetW, FRAME_H / targetH)
-    : 1;
+  // 1. 모서리가 날아가지 않도록 기존 대비 확대 배율을 줄임 (0.75 안전 배율)
+  const rawScale = activeSlot ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) : 1;
+  const frameScale = activeSlot ? rawScale * 0.75 : 1;
 
-  // 2. 프레임용 중심점 이동 거리 (%)
-  const frameOffsetX = activeSlot ? ((FRAME_W / 2 - targetCenterX) / FRAME_W) * 100 : 0;
-  const frameOffsetY = activeSlot ? ((FRAME_H / 2 - targetCenterY) / FRAME_H) * 100 : 0;
+  // 2. 해당 칸이 모서리에 있더라도 화면 정확한 '중앙'에 오도록 이동 거리 보정 계산
+  const frameOffsetX = activeSlot ? ((FRAME_W / 2 - targetCenterX) / FRAME_W) * 100 * frameScale : 0;
+  const frameOffsetY = activeSlot ? ((FRAME_H / 2 - targetCenterY) / FRAME_H) * 100 * frameScale : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col">
@@ -177,7 +173,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
           
-          {/* 1. 카메라는 절대 확대/이동하지 않고 원래 뷰로 고정 */}
+          {/* 1. 카메라는 완전 고정 */}
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
@@ -189,7 +185,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
             />
           </div>
 
-          {/* 2. 프레임(오버레이)만 독립적으로 40px 여유를 주고 이동 및 확대 */}
+          {/* 2. 프레임만 적절한 스케일과 강력한 이동값으로 중앙 조명 */}
           <div
             className="absolute inset-0 pointer-events-none transition-transform duration-500 ease-in-out"
             style={{
