@@ -36,7 +36,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
   const activeSlotIndex = slotIndexForShot(currentShot);
   const activeTake = takeIndexForShot(currentShot);
   const activeSlot = selectedFrame.slots[activeSlotIndex];
-  const zooming = phase === 'countdown' || phase === 'shooting';
+  const isCapturing = phase === 'countdown' || phase === 'shooting';
 
   useEffect(() => {
     startCamera(facing);
@@ -53,6 +53,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
+  // 오버레이 및 캔버스 프레임 그리기
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -73,12 +74,13 @@ export function CameraView({ onComplete, onCancel }: Props) {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    if (zooming && activeSlot) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.lineWidth = 10;
+    // 촬영 중일 때 현재 촬영 중인 '칸' 가이드라인 테두리 표시
+    if (isCapturing && activeSlot) {
+      ctx.strokeStyle = '#FF3B30'; // 눈에 잘 띄는 강조 테두리
+      ctx.lineWidth = 12;
       ctx.strokeRect(activeSlot.x, activeSlot.y, activeSlot.w, activeSlot.h);
     }
-  }, [selectedFrame, overlayImg, zooming, activeSlot]);
+  }, [selectedFrame, overlayImg, isCapturing, activeSlot]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
@@ -94,6 +96,8 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
+      
+      // 실제 크롭 및 캡처는 slot 정보를 넘겨서 캔버스 기준 규격대로 진행됩니다.
       const data = capture(slot);
       if (data) {
         setFlash(true);
@@ -142,12 +146,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  const ox = activeSlot ? (activeSlot.x + activeSlot.w / 2) / FRAME_W : 0.5;
-  const oy = activeSlot ? (activeSlot.y + activeSlot.h / 2) / FRAME_H : 0.5;
-  const zoomScale = activeSlot
-    ? Math.min(FRAME_W / activeSlot.w, FRAME_H / activeSlot.h) * 0.88
-    : 1;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-sm border-b border-brand-100">
@@ -163,16 +161,9 @@ export function CameraView({ onComplete, onCancel }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
+        {/* 카메라 화면 영역: transform 수동 확대/이동을 제거하여 카메라 영상은 고정 유지 */}
         <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
-          <div
-            className="absolute inset-0 camera-stage"
-            style={{
-              transform: zooming
-                ? `translate(${(0.5 - ox) * 100}%, ${(0.5 - oy) * 100}%) scale(${zoomScale})`
-                : 'none',
-              transformOrigin: 'center center',
-            }}
-          >
+          <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
               autoPlay
