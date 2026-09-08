@@ -31,6 +31,8 @@ export function CameraView({ onComplete, onCancel }: Props) {
   const [currentShot, setCurrentShot] = useState(0);
   const [flash, setFlash] = useState(false);
   const [overlayImg, setOverlayImg] = useState<HTMLImageElement | null>(null);
+  
+  const stageRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
 
   const activeSlotIndex = slotIndexForShot(currentShot);
@@ -53,7 +55,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 줌 및 이동 계산식
+  // 프레임 오버레이 줌/이동 계산
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -63,7 +65,6 @@ export function CameraView({ onComplete, onCancel }: Props) {
   const frameOffsetX = activeSlot ? ((FRAME_W / 2 - targetCenterX) / FRAME_W) * 100 * frameScale : 0;
   const frameOffsetY = activeSlot ? ((FRAME_H / 2 - targetCenterY) / FRAME_H) * 100 * frameScale : 0;
 
-  // 프레임 오버레이 캔버스 그리기
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
@@ -91,61 +92,57 @@ export function CameraView({ onComplete, onCancel }: Props) {
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [핵심] 사용자가 보는 '빨간 테두리 내부 화면'을 정확히 계산해서 캡처하는 함수
+  // [화면에 보이는 정면 구도 100% 보장 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
-    if (!video || !slot) return null;
+    if (!video || !slot || !video.videoWidth) return null;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = slot.w;
-    canvas.height = slot.h;
-    const ctx = canvas.getContext('2d');
+    // 1. 실제 비디오 크롭용 임시 캔버스 생성
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = FRAME_W;
+    tempCanvas.height = FRAME_H;
+    const ctx = tempCanvas.getContext('2d');
     if (!ctx) return null;
 
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    if (!vw || !vh) return null;
+    // 2. 비디오 비율을 9:16 프레임 크기(1080x1920)로 꽉 차게 렌더링
+    const vWidth = video.videoWidth;
+    const vHeight = video.videoHeight;
+    const vAspect = vWidth / vHeight;
+    const fAspect = FRAME_W / FRAME_H;
 
-    // 1. 비디오와 캔버스 스케일링 비율 계산
-    const videoAspect = vw / vh;
-    const frameAspect = FRAME_W / FRAME_H;
-
-    let renderW = vw;
-    let renderH = vh;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    if (videoAspect > frameAspect) {
-      renderW = vh * frameAspect;
-      offsetX = (vw - renderW) / 2;
+    let sx = 0, sy = 0, sw = vWidth, sh = vHeight;
+    if (vAspect > fAspect) {
+      sw = vHeight * fAspect;
+      sx = (vWidth - sw) / 2;
     } else {
-      renderH = vw / frameAspect;
-      offsetY = (vh - renderH) / 2;
+      sh = vWidth / fAspect;
+      sy = (vHeight - sh) / 2;
     }
 
-    // 2. 줌 및 이동 역산으로 비디오 상의 실제 크롭 영역 구하기
-    const cropW = (slot.w / frameScale) * (renderW / FRAME_W);
-    const cropH = (slot.h / frameScale) * (renderH / FRAME_H);
-
-    const slotCenterXInFrame = slot.x + slot.w / 2;
-    const slotCenterYInFrame = slot.y + slot.h / 2;
-
-    const cropCenterX = offsetX + (slotCenterXInFrame / FRAME_W) * renderW;
-    const cropCenterY = offsetY + (slotCenterYInFrame / FRAME_H) * renderH;
-
-    const cropX = cropCenterX - cropW / 2;
-    const cropY = cropCenterY - cropH / 2;
-
-    // 좌우 반전 처리
     if (facing === 'user') {
-      ctx.translate(slot.w, 0);
+      ctx.translate(FRAME_W, 0);
       ctx.scale(-1, 1);
     }
 
-    ctx.drawImage(
-      video,
-      Math.max(0, cropX),
-      Math.max(0, cropY),
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, FRAME_W, FRAME_H);
+
+    // 3. 줌/이동이 적용되었을 때, 빨간 테두리 내부(슬롯 구역)만 정확히 잘라내기
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = slot.w;
+    finalCanvas.height = slot.h;
+    const finalCtx = finalCanvas.getContext('2d');
+    if (!finalCtx) return null;
+
+    // 줌 역산 계산
+    const cropW = slot.w / frameScale;
+    const cropH = slot.h / frameScale;
+    const cropX = (slot.x + slot.w / 2) - cropW / 2;
+    const cropY = (slot.y + slot.h / 2) - cropH / 2;
+
+    finalCtx.drawImage(
+      tempCanvas,
+      cropX,
+      cropY,
       cropW,
       cropH,
       0,
@@ -154,7 +151,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
       slot.h
     );
 
-    return canvas.toDataURL('image/jpeg', 0.95);
+    return finalCanvas.toDataURL('image/jpeg', 0.95);
   }, [facing, frameScale, videoRef]);
 
   const runSequence = useCallback(async () => {
@@ -171,9 +168,8 @@ export function CameraView({ onComplete, onCancel }: Props) {
 
       setPhase('shooting');
       const slot = selectedFrame.slots[slotIndexForShot(i)];
-      
-      // 빨간 테두리 내부 가이드대로 자르기 수행
       const data = captureVisibleArea(slot);
+      
       if (data) {
         setFlash(true);
         setTimeout(() => setFlash(false), 300);
@@ -236,7 +232,10 @@ export function CameraView({ onComplete, onCancel }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-        <div className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black">
+        <div 
+          ref={stageRef}
+          className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black"
+        >
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
