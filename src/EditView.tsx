@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Download, ArrowLeft, RotateCcw, Check } from 'lucide-react';
-import { defaultSlots } from './frames';
+import { defaultSlots, bundledFrames } from './frames';
 import { APP_TITLE, FRAME_W, FRAME_H, SLOT_COUNT, type FrameTemplate, type Photo } from './types';
 import { composeFinalImage, canvasToJpgBlob, downloadBlob } from './compose';
 
@@ -12,7 +12,7 @@ type Props = {
 
 export function EditView({ photos, initialFrame, onBack }: Props) {
   const [frame, setFrame] = useState<FrameTemplate>(initialFrame);
-  const [photoMap, setPhotoMap] = useState<Record<string, Photo>>(() => {
+  const [photoMap] = useState<Record<string, Photo>>(() => {
     const map: Record<string, Photo> = {};
     for (const p of photos) map[p.id] = p;
     return map;
@@ -31,11 +31,14 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     x: number,
     y: number,
     w: number,
-    h: number,
+    h: number
   ) => {
     const imgRatio = img.width / img.height;
     const slotRatio = w / h;
-    let sx = 0, sy = 0, sw = img.width, sh = img.height;
+    let sx = 0,
+      sy = 0,
+      sw = img.width,
+      sh = img.height;
     if (imgRatio > slotRatio) {
       sw = img.height * slotRatio;
       sx = (img.width - sw) / 2;
@@ -99,9 +102,20 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     setFrame({ ...frame, slots: newSlots });
   };
 
+  // 찍은 사진 매핑 유지하며 프레임만 변경
+  const handleSelectFrame = (newFrame: FrameTemplate) => {
+    setFrame({
+      ...newFrame,
+      slots: newFrame.slots.map((slot, index) => ({
+        ...slot,
+        photoId: frame.slots[index]?.photoId ?? null,
+      })),
+    });
+  };
+
   const handleReset = () => {
     setFrame({
-      ...frame,
+      ...initialFrame,
       slots: defaultSlots.map((s, i) => ({
         ...s,
         photoId: photos.find((p) => p.slotIndex === i && p.takeIndex === 0)?.id ?? null,
@@ -148,8 +162,9 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 max-w-5xl mx-auto w-full">
+        {/* 미리보기 영역 (CP1300 인쇄 비율 1181/1748 적용) */}
         <div className="flex-1 flex flex-col items-center gap-4">
-          <div className="relative w-full max-w-xs aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-white">
+          <div className="relative w-full max-w-xs aspect-[1181/1748] rounded-2xl overflow-hidden shadow-2xl bg-white">
             <canvas ref={previewRef} className="w-full h-full" />
           </div>
 
@@ -178,9 +193,38 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
           </button>
         </div>
 
-        <div className="w-full lg:w-80 flex flex-col gap-5">
+        {/* 선택 옵션 영역 */}
+        <div className="w-full lg:w-80 flex flex-col gap-6">
+          {/* 1. 프레임 변경 옵션 */}
+          {bundledFrames.length > 1 && (
+            <div>
+              <h3 className="font-display text-sm text-gray-700 mb-2">프레임 변경</h3>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                {bundledFrames.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => handleSelectFrame(f)}
+                    className={`flex-shrink-0 w-12 h-[71px] rounded-lg border-2 overflow-hidden transition-all ${
+                      frame.id === f.id
+                        ? 'border-brand-500 ring-2 ring-brand-300 scale-105'
+                        : 'border-gray-200 hover:border-brand-300'
+                    }`}
+                    title={f.name}
+                  >
+                    {f.overlayUrl ? (
+                      <img src={f.overlayUrl} alt={f.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full" style={{ backgroundColor: f.bgColor }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2. 사진 고르기 옵션 */}
           <div>
-            <h3 className="font-display text-sm text-gray-700 mb-2">칸마다 사진 고르기</h3>
+            <h3 className="font-display text-sm text-gray-700 mb-1">칸마다 사진 고르기</h3>
             <p className="text-xs text-gray-400 mb-3 font-body">각 칸에서 2장 중 1장을 선택하세요</p>
             <div className="flex flex-col gap-4">
               {Array.from({ length: SLOT_COUNT }).map((_, i) => {
@@ -224,7 +268,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
 
 function preloadImages(
   photoMap: Record<string, Photo>,
-  frame: FrameTemplate,
+  frame: FrameTemplate
 ): Promise<void[]> {
   const promises: Promise<void>[] = [];
   for (const slot of frame.slots) {
@@ -237,7 +281,7 @@ function preloadImages(
         img.onload = () => resolve();
         img.onerror = () => resolve();
         img.src = photo.src;
-      }),
+      })
     );
   }
   return Promise.all(promises);
