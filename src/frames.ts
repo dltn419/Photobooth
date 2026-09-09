@@ -2,45 +2,17 @@ import { bundledFrameFiles } from 'virtual:bundled-frames';
 import { type FrameTemplate, type Slot } from './types';
 
 /**
- * CP1300 (1181 × 1748) 해상도 기준 2×2 정밀 고정 좌표 설정
- * - 각 사진 영역: 너비 510px, 높이 740px
- * - 오차 방지여백(PHOTO_BLEED): 프레임 구멍 외곽으로 사진이 살짝 비치도록 5px 오버랩
+ * CP1300 (1181 × 1748) 해상도 기준 원본 슬롯 고정 좌표
+ * - Slot 1: x=69, y=65, w=500, h=629
+ * - Slot 2: x=608, y=65, w=500, h=629
+ * - Slot 3: x=69, y=711, w=500, h=629
+ * - Slot 4: x=608, y=711, w=500, h=629
  */
-const BLEED = 5;
-
 export const defaultSlots: Slot[] = [
-  // 1. 좌측 상단 (Col 0, Row 0)
-  {
-    x: 60 - BLEED,
-    y: 70 - BLEED,
-    w: 510 + BLEED * 2,
-    h: 740 + BLEED * 2,
-    photoId: null,
-  },
-  // 2. 우측 상단 (Col 1, Row 0)
-  {
-    x: 611 - BLEED,
-    y: 70 - BLEED,
-    w: 510 + BLEED * 2,
-    h: 740 + BLEED * 2,
-    photoId: null,
-  },
-  // 3. 좌측 하단 (Col 0, Row 1)
-  {
-    x: 60 - BLEED,
-    y: 850 - BLEED,
-    w: 510 + BLEED * 2,
-    h: 740 + BLEED * 2,
-    photoId: null,
-  },
-  // 4. 우측 하단 (Col 1, Row 1)
-  {
-    x: 611 - BLEED,
-    y: 850 - BLEED,
-    w: 510 + BLEED * 2,
-    h: 740 + BLEED * 2,
-    photoId: null,
-  },
+  { x: 69, y: 65, w: 500, h: 629, photoId: null },   // Slot 1 (좌측 상단)
+  { x: 608, y: 65, w: 500, h: 629, photoId: null },  // Slot 2 (우측 상단)
+  { x: 69, y: 711, w: 500, h: 629, photoId: null },  // Slot 3 (좌측 하단)
+  { x: 608, y: 711, w: 500, h: 629, photoId: null }, // Slot 4 (우측 하단)
 ];
 
 function withSlots(partial: Omit<FrameTemplate, 'slots'>): FrameTemplate {
