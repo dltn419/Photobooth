@@ -38,3 +38,5 @@ export function slotIndexForShot(shotIndex: number) {
 export function takeIndexForShot(shotIndex: number) {
   return shotIndex % SHOTS_PER_SLOT;
 }
+// src/types.ts 파일 하단에 추가
+export const TAKES_PER_SLOT = 2; // 한 칸당 촬영 횟수 (2장씩)
