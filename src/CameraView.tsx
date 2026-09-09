@@ -55,7 +55,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 이동 및 줌 스케일 계산
+  // 프레임 이동 및 줌 스케일 계산 (CP1300 해상도 기반)
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -247,9 +247,10 @@ export function CameraView({ onComplete, onCancel }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
+        {/* CP1300 인쇄 비율(1181/1748) 적용 스테이지 */}
         <div 
           ref={stageRef}
-          className="relative w-full max-w-sm aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl bg-black"
+          className="relative w-full max-w-sm aspect-[1181/1748] rounded-2xl overflow-hidden shadow-2xl bg-black"
         >
           <div className="absolute inset-0 camera-stage">
             <video
@@ -358,7 +359,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
           <div className="w-full max-w-sm">
             {bundledFrames.length === 0 ? (
               <p className="text-xs text-gray-500 text-center font-body">
-                `public/frames` 폴더에 PNG 프레임을 넣어주세요 (1080×1920)
+                `public/frames` 폴더에 PNG 프레임을 넣어주세요 (1181×1748)
               </p>
             ) : bundledFrames.length > 1 ? (
               <>
@@ -368,7 +369,7 @@ export function CameraView({ onComplete, onCancel }: Props) {
                     <button
                       key={f.id}
                       onClick={() => setSelectedFrame(f)}
-                      className={`flex-shrink-0 w-12 h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                      className={`flex-shrink-0 w-12 h-[71px] rounded-lg border-2 overflow-hidden transition-all ${
                         selectedFrame.id === f.id
                           ? 'border-brand-500 ring-2 ring-brand-300 scale-105'
                           : 'border-gray-200 hover:border-brand-300'
