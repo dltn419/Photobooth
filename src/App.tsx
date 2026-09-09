@@ -4,22 +4,25 @@ import { Camera, Sparkles, Heart, Download, Timer, Image as ImageIcon } from 'lu
 import { CameraView } from './CameraView';
 import { EditView } from './EditView';
 import { APP_TITLE, type FrameTemplate, type Photo } from './types';
-import { bundledFrames } from './frames'; // 가지고 계신 프레임 목록 파일
+import { bundledFrames, builtinFrames } from './frames';
 
 type Phase = 'home' | 'camera' | 'edit';
 
 function App() {
   const [phase, setPhase] = useState<Phase>('home');
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [selectedFrame, setSelectedFrame] = useState<FrameTemplate>(bundledFrames[0]);
-  const [timerSeconds, setTimerSeconds] = useState<number>(5); // 기본 카운트다운 5초
+  const [selectedFrame, setSelectedFrame] = useState<FrameTemplate>(
+    bundledFrames.length > 0 ? bundledFrames[0] : builtinFrames[0]
+  );
+  const [timerSeconds, setTimerSeconds] = useState<number>(5);
 
   const startCamera = () => {
     setPhase('camera');
   };
 
-  const handleCaptureComplete = (captured: Photo[]) => {
-    setPhotos(captured);
+  const handleCaptureComplete = (capturedPhotos: Photo[], frame: FrameTemplate) => {
+    setPhotos(capturedPhotos);
+    setSelectedFrame(frame);
     setPhase('edit');
   };
 
@@ -36,7 +39,7 @@ function App() {
   if (phase === 'camera') {
     return (
       <CameraView
-        frame={selectedFrame}
+        initialFrame={selectedFrame}
         timerSeconds={timerSeconds}
         onComplete={handleCaptureComplete}
         onCancel={handleBackHome}
@@ -44,7 +47,7 @@ function App() {
     );
   }
 
-  if (phase === 'edit' && selectedFrame) {
+  if (phase === 'edit') {
     return (
       <EditView
         photos={photos}
@@ -53,6 +56,8 @@ function App() {
       />
     );
   }
+
+  const framesList = bundledFrames.length > 0 ? bundledFrames : builtinFrames;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -79,7 +84,7 @@ function App() {
             <span>프레임 선택</span>
           </div>
           <div className="grid grid-cols-3 gap-2 w-full">
-            {bundledFrames.map((f) => (
+            {framesList.map((f) => (
               <button
                 key={f.id}
                 onClick={() => setSelectedFrame(f)}
@@ -122,7 +127,7 @@ function App() {
           </div>
         </div>
 
-        {/* 안내 아이콘 그리드 */}
+        {/* 안내 아이콘 카드 */}
         <div className="grid grid-cols-2 gap-2.5 w-full">
           <FeatureCard icon={<Camera size={18} />} title="칸 확대 촬영" desc="찍는 칸이 화면을 채움" />
           <FeatureCard icon={<Heart size={18} />} title="칸마다 2장" desc="8컷 중 4컷 선택" />
@@ -138,10 +143,6 @@ function App() {
           <Camera size={24} />
           촬영 시작하기
         </button>
-
-        <p className="text-xs text-gray-400 font-body">
-          PC 웹캠 및 스마트폰 카메라 모두 지원됩니다
-        </p>
       </div>
     </div>
   );
