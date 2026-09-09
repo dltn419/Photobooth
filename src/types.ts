@@ -23,8 +23,8 @@ export type FrameTemplate = {
 };
 
 export const APP_TITLE = '파천 네컷';
-export const FRAME_W = 1080;
-export const FRAME_H = 1920;
+export const FRAME_W = 1181;
+export const FRAME_H = 1748;
 export const SLOT_COUNT = 4;
 export const SHOTS_PER_SLOT = 2;
 export const TOTAL_SHOTS = SLOT_COUNT * SHOTS_PER_SLOT;
