@@ -1,36 +1,46 @@
 import { bundledFrameFiles } from 'virtual:bundled-frames';
-import { FRAME_W, FRAME_H, type FrameTemplate } from './types';
+import { type FrameTemplate, type Slot } from './types';
 
-/** 
- * CP1300 (1181 × 1748) 해상도 기준 세로 4컷 좌표 설정
- * - HOLE_X: 좌우 여백 (50px)
- * - HOLE_W: 각 사진 슬롯 너비 (1081px)
- * - HOLE_H: 각 사진 슬롯 높이 (350px)
- * - START_Y: 첫 번째 사진의 시작 Y 좌표 (120px)
- * - GAP: 사진 간격 (30px)
+/**
+ * CP1300 (1181 × 1748) 해상도 기준 2×2 정밀 고정 좌표 설정
+ * - 각 사진 영역: 너비 510px, 높이 740px
+ * - 오차 방지여백(PHOTO_BLEED): 프레임 구멍 외곽으로 사진이 살짝 비치도록 5px 오버랩
  */
-const HOLE_X = 50;
-const HOLE_W = FRAME_W - HOLE_X * 2; // 1081px
-const HOLE_H = 350;
-const START_Y = 120;
-const GAP = 30;
-const PHOTO_BLEED = 4; // 오차 방지 여백
+const BLEED = 5;
 
-function slotPos(index: number) {
-  const holeY = START_Y + index * (HOLE_H + GAP);
-  return {
-    x: HOLE_X - PHOTO_BLEED,
-    y: holeY - PHOTO_BLEED,
-    w: HOLE_W + PHOTO_BLEED * 2,
-    h: HOLE_H + PHOTO_BLEED * 2,
-  };
-}
-
-export const defaultSlots = [
-  { ...slotPos(0), photoId: null },
-  { ...slotPos(1), photoId: null },
-  { ...slotPos(2), photoId: null },
-  { ...slotPos(3), photoId: null },
+export const defaultSlots: Slot[] = [
+  // 1. 좌측 상단 (Col 0, Row 0)
+  {
+    x: 60 - BLEED,
+    y: 70 - BLEED,
+    w: 510 + BLEED * 2,
+    h: 740 + BLEED * 2,
+    photoId: null,
+  },
+  // 2. 우측 상단 (Col 1, Row 0)
+  {
+    x: 611 - BLEED,
+    y: 70 - BLEED,
+    w: 510 + BLEED * 2,
+    h: 740 + BLEED * 2,
+    photoId: null,
+  },
+  // 3. 좌측 하단 (Col 0, Row 1)
+  {
+    x: 60 - BLEED,
+    y: 850 - BLEED,
+    w: 510 + BLEED * 2,
+    h: 740 + BLEED * 2,
+    photoId: null,
+  },
+  // 4. 우측 하단 (Col 1, Row 1)
+  {
+    x: 611 - BLEED,
+    y: 850 - BLEED,
+    w: 510 + BLEED * 2,
+    h: 740 + BLEED * 2,
+    photoId: null,
+  },
 ];
 
 function withSlots(partial: Omit<FrameTemplate, 'slots'>): FrameTemplate {
