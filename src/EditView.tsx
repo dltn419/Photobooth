@@ -102,7 +102,6 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     setFrame({ ...frame, slots: newSlots });
   };
 
-  // 찍은 사진 매핑 유지하며 프레임만 변경
   const handleSelectFrame = (newFrame: FrameTemplate) => {
     setFrame({
       ...newFrame,
@@ -162,7 +161,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
       </header>
 
       <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 max-w-5xl mx-auto w-full">
-        {/* 미리보기 영역 (CP1300 인쇄 비율 1181/1748 적용) */}
+        {/* CP1300 비율 (1181/1748) 미리보기 영역 */}
         <div className="flex-1 flex flex-col items-center gap-4">
           <div className="relative w-full max-w-xs aspect-[1181/1748] rounded-2xl overflow-hidden shadow-2xl bg-white">
             <canvas ref={previewRef} className="w-full h-full" />
@@ -193,9 +192,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
           </button>
         </div>
 
-        {/* 선택 옵션 영역 */}
         <div className="w-full lg:w-80 flex flex-col gap-6">
-          {/* 1. 프레임 변경 옵션 */}
           {bundledFrames.length > 1 && (
             <div>
               <h3 className="font-display text-sm text-gray-700 mb-2">프레임 변경</h3>
@@ -222,10 +219,9 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
             </div>
           )}
 
-          {/* 2. 사진 고르기 옵션 */}
           <div>
             <h3 className="font-display text-sm text-gray-700 mb-1">칸마다 사진 고르기</h3>
-            <p className="text-xs text-gray-400 mb-3 font-body">각 칸에서 2장 중 1장을 선택하세요</p>
+            <p className="text-xs text-gray-400 mb-3 font-body font-normal">각 칸에서 2장 중 1장을 선택하세요</p>
             <div className="flex flex-col gap-4">
               {Array.from({ length: SLOT_COUNT }).map((_, i) => {
                 const chosen = frame.slots[i]?.photoId;
@@ -237,7 +233,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
                         <button
                           key={photo.id}
                           onClick={() => assignSlot(i, photo.id)}
-                          className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all ${
+                          className={`relative aspect-[500/629] rounded-lg overflow-hidden border-2 transition-all ${
                             chosen === photo.id
                               ? 'border-brand-500 ring-2 ring-brand-300'
                               : 'border-gray-200 hover:border-brand-300'
