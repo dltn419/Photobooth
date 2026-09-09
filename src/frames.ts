@@ -1,20 +1,25 @@
 import { bundledFrameFiles } from 'virtual:bundled-frames';
-import { type FrameTemplate } from './types';
+import { FRAME_W, FRAME_H, type FrameTemplate } from './types';
 
-/** Visible frame window (top-left rectangle vertices). */
-const HOLE_X = 65;
-const HOLE_Y = 71;
-const HOLE_W = 526 - 65; // 461
-const HOLE_H = 761 - 71; // 690
-const GAP = 22;
-/** Photo extends past the frame hole so alignment error cannot leave a gap. */
-const PHOTO_BLEED = 5;
+/** 
+ * CP1300 (1181 × 1748) 해상도 기준 세로 4컷 좌표 설정
+ * - HOLE_X: 좌우 여백 (50px)
+ * - HOLE_W: 각 사진 슬롯 너비 (1081px)
+ * - HOLE_H: 각 사진 슬롯 높이 (350px)
+ * - START_Y: 첫 번째 사진의 시작 Y 좌표 (120px)
+ * - GAP: 사진 간격 (30px)
+ */
+const HOLE_X = 50;
+const HOLE_W = FRAME_W - HOLE_X * 2; // 1081px
+const HOLE_H = 350;
+const START_Y = 120;
+const GAP = 30;
+const PHOTO_BLEED = 4; // 오차 방지 여백
 
-function slotPos(col: number, row: number) {
-  const holeX = HOLE_X + col * (HOLE_W + GAP);
-  const holeY = HOLE_Y + row * (HOLE_H + GAP);
+function slotPos(index: number) {
+  const holeY = START_Y + index * (HOLE_H + GAP);
   return {
-    x: holeX - PHOTO_BLEED,
+    x: HOLE_X - PHOTO_BLEED,
     y: holeY - PHOTO_BLEED,
     w: HOLE_W + PHOTO_BLEED * 2,
     h: HOLE_H + PHOTO_BLEED * 2,
@@ -22,10 +27,10 @@ function slotPos(col: number, row: number) {
 }
 
 export const defaultSlots = [
-  { ...slotPos(0, 0), photoId: null },
-  { ...slotPos(1, 0), photoId: null },
-  { ...slotPos(0, 1), photoId: null },
-  { ...slotPos(1, 1), photoId: null },
+  { ...slotPos(0), photoId: null },
+  { ...slotPos(1), photoId: null },
+  { ...slotPos(2), photoId: null },
+  { ...slotPos(3), photoId: null },
 ];
 
 function withSlots(partial: Omit<FrameTemplate, 'slots'>): FrameTemplate {
@@ -48,7 +53,7 @@ export const bundledFrames: FrameTemplate[] = bundledFrameFiles.map((f) =>
 export const fallbackFrame: FrameTemplate = withSlots({
   id: 'fallback',
   name: '기본',
-  bgColor: '#faf7f2',
+  bgColor: '#ffffff',
 });
 
 export const builtinFrames = bundledFrames.length > 0 ? bundledFrames : [fallbackFrame];
