@@ -1,3 +1,4 @@
+// src/CameraView.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Camera, SwitchCamera, Check, X, AlertCircle, CameraOff, Timer } from 'lucide-react';
 import { useCamera } from './useCamera';
@@ -96,70 +97,59 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [가로세로 비율 왜곡 보정 및 오프셋 교정 정밀 캡처]
+  // [빨간 테두리 슬롯 좌표계 기준 정밀 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
-    const stage = stageRef.current;
-    if (!video || !slot || !stage || !video.videoWidth) return null;
+    if (!video || !slot || !video.videoWidth || !video.videoHeight) return null;
 
-    // 1. 슬롯 원본 비율 해상도로 캔버스 생성
+    // 1. 슬롯 해상도로 오프스크린 캔버스 생성
     const canvas = document.createElement('canvas');
     canvas.width = slot.w;
     canvas.height = slot.h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 2. 화면 실제 영역 및 스케일 측정
-    const videoRect = video.getBoundingClientRect();
-    const stageRect = stage.getBoundingClientRect();
+    const vWidth = video.videoWidth;
+    const vHeight = video.videoHeight;
 
-    const scaleX = stageRect.width / FRAME_W;
-    const scaleY = stageRect.height / FRAME_H;
+    // 2. object-cover 적용된 스테이지 비율(1181:1748)에 매핑되는 비디오의 실제 가시 영역 계산
+    const stageAspect = FRAME_W / FRAME_H;
+    const videoAspect = vWidth / vHeight;
 
-    // 3. Dynamic Zooming CSS Offset(frameOffsetX, frameOffsetY) 수치 보정
-    const offsetXInPixels = (frameOffsetX / 100) * stageRect.width;
-    const offsetYInPixels = (frameOffsetY / 100) * stageRect.height;
+    let visibleVWidth = vWidth;
+    let visibleVHeight = vHeight;
+    let visibleVLeft = 0;
+    let visibleVTop = 0;
 
-    const boxCenterX = stageRect.left + stageRect.width / 2 + offsetXInPixels;
-    const boxCenterY = stageRect.top + stageRect.height / 2 + offsetYInPixels;
-
-    const boxWidthOnScreen = slot.w * scaleX * frameScale;
-    const boxHeightOnScreen = slot.h * scaleY * frameScale;
-
-    const boxLeftOnScreen = boxCenterX - boxWidthOnScreen / 2;
-    const boxTopOnScreen = boxCenterY - boxHeightOnScreen / 2;
-
-    // 4. 비디오 원본 픽셀 좌표 변환
-    const videoScaleX = video.videoWidth / videoRect.width;
-    const videoScaleY = video.videoHeight / videoRect.height;
-
-    let sourceX = (boxLeftOnScreen - videoRect.left) * videoScaleX;
-    let sourceY = (boxTopOnScreen - videoRect.top) * videoScaleY;
-    let sourceWidth = boxWidthOnScreen * videoScaleX;
-    let sourceHeight = boxHeightOnScreen * videoScaleY;
-
-    // 5. 비율 고정 찌그러짐 방지
-    const targetAspect = slot.w / slot.h;
-    const currentAspect = sourceWidth / sourceHeight;
-
-    if (currentAspect > targetAspect) {
-      const newWidth = sourceHeight * targetAspect;
-      sourceX += (sourceWidth - newWidth) / 2;
-      sourceWidth = newWidth;
+    if (videoAspect > stageAspect) {
+      // 비디오가 더 넓은 경우 (좌우 잘림)
+      visibleVWidth = vHeight * stageAspect;
+      visibleVLeft = (vWidth - visibleVWidth) / 2;
     } else {
-      const newHeight = sourceWidth / targetAspect;
-      sourceY += (sourceHeight - newHeight) / 2;
-      sourceHeight = newHeight;
+      // 비디오가 더 길쭉한 경우 (상하 잘림)
+      visibleVHeight = vWidth / stageAspect;
+      visibleVTop = (vHeight - visibleVHeight) / 2;
     }
 
-    // 6. 셀카 반전 보정
+    // 3. 빨간 테두리가 위치한 slot의 상대 좌표(0.0 ~ 1.0)를 비디오 가시 영역 좌표에 1:1 정밀 매핑
+    const slotNormX = slot.x / FRAME_W;
+    const slotNormY = slot.y / FRAME_H;
+    const slotNormW = slot.w / FRAME_W;
+    const slotNormH = slot.h / FRAME_H;
+
+    let sourceX = visibleVLeft + slotNormX * visibleVWidth;
+    let sourceY = visibleVTop + slotNormY * visibleVHeight;
+    let sourceWidth = slotNormW * visibleVWidth;
+    let sourceHeight = slotNormH * visibleVHeight;
+
+    // 4. 셀카(전면 카메라) 좌우 반전 보정
     if (facing === 'user') {
-      sourceX = video.videoWidth - sourceX - sourceWidth;
+      sourceX = vWidth - sourceX - sourceWidth;
       ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
-    // 7. 정밀 맵핑 캡처
+    // 5. 정밀 크롭 렌더링
     ctx.drawImage(
       video,
       Math.max(0, sourceX),
@@ -173,7 +163,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     );
 
     return canvas.toDataURL('image/jpeg', 0.95);
-  }, [facing, frameOffsetX, frameOffsetY, frameScale, videoRef]);
+  }, [facing, videoRef]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
