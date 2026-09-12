@@ -5,7 +5,7 @@ import { APP_TITLE, FRAME_W, FRAME_H, SLOT_COUNT, type FrameTemplate, type Photo
 import { composeFinalImage, canvasToJpgBlob, downloadBlob } from './compose';
 
 // 필터 프리셋 정의 (핵심 4종, 뽀샤시에 피부 매끈화 효과 추가)
-export type FilterType = 'normal' | 'grayscale' | 'warm' | 'vintage';
+export type FilterType = 'normal' | 'grayscale' | 'warm' | 'warm2' | 'vintage';
 
 interface FilterOption {
   id: FilterType;
@@ -15,17 +15,21 @@ interface FilterOption {
 
 const FILTER_OPTIONS: FilterOption[] = [
   { id: 'normal', name: '원본', cssFilter: 'none' },
-  { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
   { 
     id: 'warm', 
-    name: '뽀샤시', 
-    // 💡 블러 수치를 0.6px로 살짝 올려 피부를 더 부드럽게 뭉개고, 
-    // Brightness(110%)와 Contrast(92%) 조합으로 모공 음영을 강력하게 지워줍니다.
-    cssFilter: 'blur(0.6px) brightness(110%) contrast(92%) saturate(106%)' 
+    name: '뽀샤시 Lv1', 
+    // Lv1: 자연스러운 톤업 + 이목구비를 지키면서 얇은 피부결 보정
+    cssFilter: 'blur(0.4px) brightness(106%) contrast(96%) saturate(105%)' 
   },
+  { 
+    id: 'warm2', 
+    name: '뽀샤시 Lv2', 
+    // Lv2: 블러를 0.7px로 올리고 contrast를 90%로 낮춰 근접샷 모공 음영을 강력히 삭제
+    cssFilter: 'blur(0.7px) brightness(112%) contrast(90%) saturate(106%)' 
+  },
+  { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
   { id: 'vintage', name: '빈티지', cssFilter: 'sepia(35%) contrast(105%) brightness(95%)' },
 ];
-
 type Props = {
   photos: Photo[];
   initialFrame: FrameTemplate;
