@@ -97,77 +97,87 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [화면 빨간 테두리 DOM 연동 정밀 캡처]
+  // [화면 빨간 테두리 DOM 연동 및 object-cover 렌더링 보정 정밀 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
     const stage = stageRef.current;
     if (!video || !slot || !stage || !video.videoWidth || !video.videoHeight) return null;
 
-    // 1. 슬롯 원래 해상도의 오프스크린 캔버스 생성
+    // 1. 슬롯 원본 해상도의 오프스크린 캔버스 생성
     const canvas = document.createElement('canvas');
     canvas.width = slot.w;
     canvas.height = slot.h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 2. 화면상 스테이지 및 비디오 요소의 실제 DOM Rect 측청
+    // 2. 화면 실제 DOM 레이아웃 측정
     const stageRect = stage.getBoundingClientRect();
-    const videoRect = video.getBoundingClientRect();
 
-    // 3. Transform(이동, 확대) 적용 후 화면 중심상 슬롯의 실제 위치 계산
+    // 3. UI Transform(Scale + Translate) 계산을 반영한 화면상 슬롯 Bounding Box 산출
+    const offsetXPx = ((FRAME_W / 2 - targetCenterX) / FRAME_W) * stageRect.width * frameScale;
+    const offsetYPx = ((FRAME_H / 2 - targetCenterY) / FRAME_H) * stageRect.height * frameScale;
+
+    const slotCenterXInStage = (targetCenterX / FRAME_W) * stageRect.width;
+    const slotCenterYInStage = (targetCenterY / FRAME_H) * stageRect.height;
+
     const stageCenterX = stageRect.left + stageRect.width / 2;
     const stageCenterY = stageRect.top + stageRect.height / 2;
 
-    const slotCenterXInFrame = slot.x + slot.w / 2;
-    const slotCenterYInFrame = slot.y + slot.h / 2;
+    const slotCenterXOnScreen = stageCenterX + (slotCenterXInStage - stageRect.width / 2) * frameScale + offsetXPx;
+    const slotCenterYOnScreen = stageCenterY + (slotCenterYInStage - stageRect.height / 2) * frameScale + offsetYPx;
 
-    const normOffsetX = (slotCenterXInFrame - FRAME_W / 2) / FRAME_W;
-    const normOffsetY = (slotCenterYInFrame - FRAME_H / 2) / FRAME_H;
+    const boxWidthOnScreen = (slot.w / FRAME_W) * stageRect.width * frameScale;
+    const boxHeightOnScreen = (slot.h / FRAME_H) * stageRect.height * frameScale;
 
-    const slotCenterXOnScreen = stageCenterX + normOffsetX * stageRect.width * frameScale;
-    const slotCenterYOnScreen = stageCenterY + normOffsetY * stageRect.height * frameScale;
+    const boxLeftOnScreen = slotCenterXOnScreen - boxWidthOnScreen / 2;
+    const boxTopOnScreen = slotCenterYOnScreen - boxHeightOnScreen / 2;
 
-    const slotWidthOnScreen = (slot.w / FRAME_W) * stageRect.width * frameScale;
-    const slotHeightOnScreen = (slot.h / FRAME_H) * stageRect.height * frameScale;
+    // 4. object-cover로 인해 비디오 원본에서 가려진/잘린 영역(Crop Inset) 계산
+    const vWidth = video.videoWidth;
+    const vHeight = video.videoHeight;
+    const videoAspect = vWidth / vHeight;
+    const stageAspect = stageRect.width / stageRect.height;
 
-    const slotLeftOnScreen = slotCenterXOnScreen - slotWidthOnScreen / 2;
-    const slotTopOnScreen = slotCenterYOnScreen - slotHeightOnScreen / 2;
+    let renderVWidth = vWidth;
+    let renderVHeight = vHeight;
+    let cropX = 0;
+    let cropY = 0;
 
-    // 4. 화면 좌표를 비디오 원본 픽셀 좌표계로 매핑
-    const videoScaleX = video.videoWidth / videoRect.width;
-    const videoScaleY = video.videoHeight / videoRect.height;
-
-    let sourceX = (slotLeftOnScreen - videoRect.left) * videoScaleX;
-    let sourceY = (slotTopOnScreen - videoRect.top) * videoScaleY;
-    let sourceWidth = slotWidthOnScreen * videoScaleX;
-    let sourceHeight = slotHeightOnScreen * videoScaleY;
-
-    // 5. 비디오 경계 오차 보정
-    if (sourceX < 0) {
-      sourceWidth += sourceX;
-      sourceX = 0;
+    if (videoAspect > stageAspect) {
+      // 비디오가 스테이지보다 넓어서 좌우가 잘린 경우
+      renderVWidth = vHeight * stageAspect;
+      cropX = (vWidth - renderVWidth) / 2;
+    } else {
+      // 비디오가 스테이지보다 길어서 상하가 잘린 경우
+      renderVHeight = vWidth / stageAspect;
+      cropY = (vHeight - renderVHeight) / 2;
     }
-    if (sourceY < 0) {
-      sourceHeight += sourceY;
-      sourceY = 0;
-    }
-    sourceWidth = Math.min(sourceWidth, video.videoWidth - sourceX);
-    sourceHeight = Math.min(sourceHeight, video.videoHeight - sourceY);
+
+    // 5. 화면 좌표 -> 비디오 원본 픽셀 좌표 매핑
+    const normX = (boxLeftOnScreen - stageRect.left) / stageRect.width;
+    const normY = (boxTopOnScreen - stageRect.top) / stageRect.height;
+    const normW = boxWidthOnScreen / stageRect.width;
+    const normH = boxHeightOnScreen / stageRect.height;
+
+    let sourceX = cropX + normX * renderVWidth;
+    let sourceY = cropY + normY * renderVHeight;
+    let sourceWidth = normW * renderVWidth;
+    let sourceHeight = normH * renderVHeight;
 
     // 6. 셀카(전면 카메라) 좌우 반전 보정
     if (facing === 'user') {
-      sourceX = video.videoWidth - sourceX - sourceWidth;
+      sourceX = vWidth - sourceX - sourceWidth;
       ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
-    // 7. 정밀 1:1 캡처
+    // 7. 정밀 1:1 캡처 (경계 영역 안전 바운딩)
     ctx.drawImage(
       video,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
+      Math.max(0, sourceX),
+      Math.max(0, sourceY),
+      Math.min(sourceWidth, vWidth - sourceX),
+      Math.min(sourceHeight, vHeight - sourceY),
       0,
       0,
       slot.w,
@@ -175,7 +185,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     );
 
     return canvas.toDataURL('image/jpeg', 0.95);
-  }, [facing, frameScale, videoRef]);
+  }, [facing, frameScale, targetCenterX, targetCenterY, videoRef]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
