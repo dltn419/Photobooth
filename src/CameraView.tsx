@@ -144,11 +144,9 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     let cropY = 0;
 
     if (videoAspect > stageAspect) {
-      // 비디오가 스테이지보다 넓어서 좌우가 잘린 경우
       renderVWidth = vHeight * stageAspect;
       cropX = (vWidth - renderVWidth) / 2;
     } else {
-      // 비디오가 스테이지보다 길어서 상하가 잘린 경우
       renderVHeight = vWidth / stageAspect;
       cropY = (vHeight - renderVHeight) / 2;
     }
@@ -297,30 +295,38 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
 
           {flash && <div className="flash-overlay animate-flash" />}
 
+          {/* 좌측 상단 샷 정보 뱃지 */}
           {(phase === 'countdown' || phase === 'shooting') && (
-            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-sm px-3.5 py-1.5 rounded-full font-body z-10 flex items-center gap-2 border border-white/20 shadow-md">
+            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-xs px-3 py-1.5 rounded-full font-body z-10 flex items-center gap-1.5 border border-white/20 shadow-md">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
               <span>
                 칸 {activeSlotIndex + 1} · {activeTake + 1}/{SHOTS_PER_SLOT} · {currentShot + 1}/{TOTAL_SHOTS}
               </span>
-              {phase === 'countdown' && countdown > 0 && (
-                <>
-                  <span className="w-px h-3.5 bg-white/40" />
-                  <span 
-                    key={countdown}
-                    className="font-display text-amber-400 font-bold text-base animate-pulse"
-                  >
-                    {countdown}s
-                  </span>
-                </>
-              )}
-              {phase === 'shooting' && (
-                <>
-                  <span className="w-px h-3.5 bg-white/40" />
-                  <span className="font-display text-emerald-400 font-bold text-xs animate-bounce">
-                    찰칵!
-                  </span>
-                </>
-              )}
+            </div>
+          )}
+
+          {/* 상단 중앙 대형 카운트다운 애니메이션 */}
+          {phase === 'countdown' && countdown > 0 && (
+            <div className="absolute top-6 left-0 right-0 flex justify-center pointer-events-none z-20">
+              <div
+                key={countdown}
+                className="animate-in zoom-in-50 fade-in duration-300 ease-out bg-black/40 backdrop-blur-md px-6 py-1 rounded-full border border-white/20 shadow-2xl flex items-center justify-center"
+              >
+                <span className="font-display text-7xl md:text-8xl text-amber-400 font-extrabold tracking-tight drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">
+                  {countdown}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 상단 중앙 찰칵! 연출 */}
+          {phase === 'shooting' && (
+            <div className="absolute top-8 left-0 right-0 flex justify-center pointer-events-none z-20">
+              <div className="animate-in zoom-in-75 fade-in duration-200 ease-out bg-black/50 backdrop-blur-md px-6 py-2 rounded-full border border-white/20 shadow-2xl">
+                <span className="font-display text-5xl text-emerald-400 font-extrabold drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">
+                  찰칵!
+                </span>
+              </div>
             </div>
           )}
 
