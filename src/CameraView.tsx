@@ -1,4 +1,3 @@
-// src/CameraView.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Camera, SwitchCamera, Check, X, AlertCircle, CameraOff, Timer } from 'lucide-react';
 import { useCamera } from './useCamera';
@@ -97,7 +96,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [가로세로 비율 왜곡 보정 정밀 캡처]
+  // [가로세로 비율 왜곡 보정 및 오프셋 교정 정밀 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
     const stage = stageRef.current;
@@ -110,16 +109,19 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 2. 화면 실제 영역 측정
+    // 2. 화면 실제 영역 및 스케일 측정
     const videoRect = video.getBoundingClientRect();
     const stageRect = stage.getBoundingClientRect();
 
     const scaleX = stageRect.width / FRAME_W;
     const scaleY = stageRect.height / FRAME_H;
 
-    // 3. UI상 화면 영역 산출
-    const boxCenterX = stageRect.left + stageRect.width / 2;
-    const boxCenterY = stageRect.top + stageRect.height / 2;
+    // 3. Dynamic Zooming CSS Offset(frameOffsetX, frameOffsetY) 수치 보정
+    const offsetXInPixels = (frameOffsetX / 100) * stageRect.width;
+    const offsetYInPixels = (frameOffsetY / 100) * stageRect.height;
+
+    const boxCenterX = stageRect.left + stageRect.width / 2 + offsetXInPixels;
+    const boxCenterY = stageRect.top + stageRect.height / 2 + offsetYInPixels;
 
     const boxWidthOnScreen = slot.w * scaleX * frameScale;
     const boxHeightOnScreen = slot.h * scaleY * frameScale;
@@ -132,7 +134,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     const videoScaleY = video.videoHeight / videoRect.height;
 
     let sourceX = (boxLeftOnScreen - videoRect.left) * videoScaleX;
-    const sourceY = (boxTopOnScreen - videoRect.top) * videoScaleY;
+    let sourceY = (boxTopOnScreen - videoRect.top) * videoScaleY;
     let sourceWidth = boxWidthOnScreen * videoScaleX;
     let sourceHeight = boxHeightOnScreen * videoScaleY;
 
@@ -146,6 +148,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
       sourceWidth = newWidth;
     } else {
       const newHeight = sourceWidth / targetAspect;
+      sourceY += (sourceHeight - newHeight) / 2;
       sourceHeight = newHeight;
     }
 
@@ -170,7 +173,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     );
 
     return canvas.toDataURL('image/jpeg', 0.95);
-  }, [facing, frameScale, videoRef]);
+  }, [facing, frameOffsetX, frameOffsetY, frameScale, videoRef]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
@@ -283,29 +286,31 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
 
           {flash && <div className="flash-overlay animate-flash" />}
 
-          {phase === 'countdown' && countdown > 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <span
-                key={countdown}
-                className="font-display text-8xl text-white drop-shadow-lg animate-pop"
-                style={{ textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
-              >
-                {countdown}
-              </span>
-            </div>
-          )}
-
-          {phase === 'shooting' && countdown === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <span className="font-display text-5xl text-white drop-shadow-lg animate-pop">
-                찰칵!
-              </span>
-            </div>
-          )}
-
+          {/* 상단 뱃지: 촬영 진행 상태 + 카운트다운 숫자 우측 통합 배치 */}
           {(phase === 'countdown' || phase === 'shooting') && (
-            <div className="absolute top-3 left-3 bg-black/60 text-white text-sm px-3 py-1 rounded-full font-body z-10">
-              칸 {activeSlotIndex + 1} · {activeTake + 1}/{SHOTS_PER_SLOT} · {currentShot + 1}/{TOTAL_SHOTS}
+            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-sm px-3.5 py-1.5 rounded-full font-body z-10 flex items-center gap-2 border border-white/20 shadow-md">
+              <span>
+                칸 {activeSlotIndex + 1} · {activeTake + 1}/{SHOTS_PER_SLOT} · {currentShot + 1}/{TOTAL_SHOTS}
+              </span>
+              {phase === 'countdown' && countdown > 0 && (
+                <>
+                  <span className="w-px h-3.5 bg-white/40" />
+                  <span 
+                    key={countdown}
+                    className="font-display text-amber-400 font-bold text-base animate-pulse"
+                  >
+                    {countdown}s
+                  </span>
+                </>
+              )}
+              {phase === 'shooting' && (
+                <>
+                  <span className="w-px h-3.5 bg-white/40" />
+                  <span className="font-display text-emerald-400 font-bold text-xs animate-bounce">
+                    찰칵!
+                  </span>
+                </>
+              )}
             </div>
           )}
 
@@ -365,7 +370,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
         {/* 대기 중인 경우 타이머 및 프레임 고르기 */}
         {phase === 'idle' && (
           <div className="w-full max-w-sm flex flex-col gap-3">
-            {/* 타이머 직접 변경도 가능하도록 퀵 선택 제공 */}
+            {/* 타이머 퀵 선택 */}
             <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-brand-100">
               <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
                 <Timer size={14} className="text-brand-500" /> 타이머
