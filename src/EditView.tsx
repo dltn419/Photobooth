@@ -16,8 +16,8 @@ interface FilterOption {
 const FILTER_OPTIONS: FilterOption[] = [
   { id: 'normal', name: '원본', cssFilter: 'none' },
   { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
-  // blur(0.8px)로 모공 및 잡티를 매끈하게 뭉개고 contrast로 선명도를 유지
-  { id: 'warm', name: '뽀샤시', cssFilter: 'blur(0.8px) brightness(108%) contrast(108%) saturate(108%)' },
+  // 🔽 기존 blur(1px) 이상의 과도한 뭉개짐을 피하고, contrast를 96%로 살짝 낮춰 모공 음영을 누른 밸런스 값입니다.
+  { id: 'warm', name: '뽀샤시', cssFilter: 'blur(0.4px) brightness(106%) contrast(96%) saturate(105%)' },
   { id: 'vintage', name: '빈티지', cssFilter: 'sepia(40%) contrast(110%) brightness(90%)' },
 ];
 
