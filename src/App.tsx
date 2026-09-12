@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Camera, Sparkles, Heart, Download, Timer, Image as ImageIcon } from 'lucide-react';
 import { CameraView } from './CameraView';
-import { EditView } from './EditView';
+import  EditView from './EditView';
 import { APP_TITLE, type FrameTemplate, type Photo } from './types';
 import { bundledFrames, builtinFrames } from './frames';
 
