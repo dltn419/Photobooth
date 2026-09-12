@@ -4,7 +4,7 @@ import { defaultSlots, bundledFrames } from './frames';
 import { APP_TITLE, FRAME_W, FRAME_H, SLOT_COUNT, type FrameTemplate, type Photo } from './types';
 import { composeFinalImage, canvasToJpgBlob, downloadBlob } from './compose';
 
-// 필터 프리셋 정의 (핵심 4종)
+// 필터 프리셋 정의 (핵심 4종, 뽀샤시에 피부 매끈화 효과 추가)
 export type FilterType = 'normal' | 'grayscale' | 'warm' | 'vintage';
 
 interface FilterOption {
@@ -16,7 +16,8 @@ interface FilterOption {
 const FILTER_OPTIONS: FilterOption[] = [
   { id: 'normal', name: '원본', cssFilter: 'none' },
   { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
-  { id: 'warm', name: '뽀샤시', cssFilter: 'brightness(108%) contrast(95%) saturate(110%)' },
+  // blur(0.8px)로 모공 및 잡티를 매끈하게 뭉개고 contrast로 선명도를 유지
+  { id: 'warm', name: '뽀샤시', cssFilter: 'blur(0.8px) brightness(108%) contrast(108%) saturate(108%)' },
   { id: 'vintage', name: '빈티지', cssFilter: 'sepia(40%) contrast(110%) brightness(90%)' },
 ];
 
