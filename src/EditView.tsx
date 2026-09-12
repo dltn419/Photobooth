@@ -4,8 +4,8 @@ import { defaultSlots, bundledFrames } from './frames';
 import { APP_TITLE, FRAME_W, FRAME_H, SLOT_COUNT, type FrameTemplate, type Photo } from './types';
 import { composeFinalImage, canvasToJpgBlob, downloadBlob } from './compose';
 
-// 필터 프리셋 정의
-export type FilterType = 'normal' | 'grayscale' | 'sepia' | 'vintage' | 'warm' | 'cool';
+// 필터 프리셋 정의 (핵심 4종)
+export type FilterType = 'normal' | 'grayscale' | 'warm' | 'vintage';
 
 interface FilterOption {
   id: FilterType;
@@ -16,10 +16,8 @@ interface FilterOption {
 const FILTER_OPTIONS: FilterOption[] = [
   { id: 'normal', name: '원본', cssFilter: 'none' },
   { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
-  { id: 'sepia', name: '세피아', cssFilter: 'sepia(80%)' },
-  { id: 'vintage', name: '빈티지', cssFilter: 'sepia(40%) contrast(110%) brightness(90%)' },
   { id: 'warm', name: '뽀샤시', cssFilter: 'brightness(108%) contrast(95%) saturate(110%)' },
-  { id: 'cool', name: '쿨톤', cssFilter: 'hue-rotate(180deg) saturate(80%) brightness(105%)' },
+  { id: 'vintage', name: '빈티지', cssFilter: 'sepia(40%) contrast(110%) brightness(90%)' },
 ];
 
 type Props = {
@@ -81,7 +79,6 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     ctx.fillStyle = frame.bgColor;
     ctx.fillRect(0, 0, FRAME_W, FRAME_H);
 
-    // 슬롯 사진 그리기 (선택된 필터 적용)
     for (const slot of frame.slots) {
       if (!slot.photoId) {
         ctx.fillStyle = 'rgba(0,0,0,0.08)';
@@ -97,7 +94,6 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
         drawImageCover(ctx, img, slot.x, slot.y, slot.w, slot.h);
         ctx.restore();
 
-        // 필터 영향 안 받는 오버레이 프레임 재합성
         if (overlayImg) ctx.drawImage(overlayImg, 0, 0, FRAME_W, FRAME_H);
       };
       img.src = photo.src;
@@ -155,7 +151,6 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     setSaved(false);
     try {
       await preloadImages(photoMap, frame);
-      // composeFinalImage에 선택한 activeFilterCss를 4번째 인자로 전달
       const canvas = composeFinalImage(frame, photoMap, overlayImg, activeFilterCss);
       const blob = await canvasToJpgBlob(canvas, 0.95);
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -228,18 +223,18 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
               <Sparkles size={16} className="text-brand-500" />
               <span>사진 필터</span>
             </div>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div className="grid grid-cols-4 gap-2">
               {FILTER_OPTIONS.map((f) => (
                 <button
                   key={f.id}
                   onClick={() => setSelectedFilter(f.id)}
-                  className={`flex-shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-xl border transition-all ${
+                  className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border transition-all ${
                     selectedFilter === f.id
                       ? 'border-brand-500 bg-brand-50/50 ring-2 ring-brand-300 scale-105'
                       : 'border-gray-200 hover:border-brand-300 bg-white'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
+                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
                     {photos[0] ? (
                       <img
                         src={photos[0].src}
