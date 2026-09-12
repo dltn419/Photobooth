@@ -60,7 +60,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // UI용 Zoom In 연출 계산 (CP1300 해상도 1181x1748 기준)
+  // 프레임 이동 및 줌 스케일 계산 (CP1300 해상도 1181x1748 기반)
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -97,64 +97,75 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [고정 비디오 - 프레임 절대좌표 1:1 정밀 캡처]
+  // [화면 빨간 테두리 DOM 연동 정밀 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
-    if (!video || !slot || !video.videoWidth || !video.videoHeight) return null;
+    const stage = stageRef.current;
+    if (!video || !slot || !stage || !video.videoWidth || !video.videoHeight) return null;
 
-    // 1. 슬롯 원래 크기의 오프스크린 캔버스 생성
+    // 1. 슬롯 원래 해상도의 오프스크린 캔버스 생성
     const canvas = document.createElement('canvas');
     canvas.width = slot.w;
     canvas.height = slot.h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    const vWidth = video.videoWidth;
-    const vHeight = video.videoHeight;
+    // 2. 화면상 스테이지 및 비디오 요소의 실제 DOM Rect 측청
+    const stageRect = stage.getBoundingClientRect();
+    const videoRect = video.getBoundingClientRect();
 
-    // 2. object-cover로 1181:1748 스테이지에 맞춰진 비디오 원본의 가시 영역 계산
-    const stageAspect = FRAME_W / FRAME_H;
-    const videoAspect = vWidth / vHeight;
+    // 3. Transform(이동, 확대) 적용 후 화면 중심상 슬롯의 실제 위치 계산
+    const stageCenterX = stageRect.left + stageRect.width / 2;
+    const stageCenterY = stageRect.top + stageRect.height / 2;
 
-    let visibleVWidth = vWidth;
-    let visibleVHeight = vHeight;
-    let visibleVLeft = 0;
-    let visibleVTop = 0;
+    const slotCenterXInFrame = slot.x + slot.w / 2;
+    const slotCenterYInFrame = slot.y + slot.h / 2;
 
-    if (videoAspect > stageAspect) {
-      // 비디오가 더 넓은 경우 (좌우 잘림)
-      visibleVWidth = vHeight * stageAspect;
-      visibleVLeft = (vWidth - visibleVWidth) / 2;
-    } else {
-      // 비디오가 더 길쭉한 경우 (상하 잘림)
-      visibleVHeight = vWidth / stageAspect;
-      visibleVTop = (vHeight - visibleVHeight) / 2;
+    const normOffsetX = (slotCenterXInFrame - FRAME_W / 2) / FRAME_W;
+    const normOffsetY = (slotCenterYInFrame - FRAME_H / 2) / FRAME_H;
+
+    const slotCenterXOnScreen = stageCenterX + normOffsetX * stageRect.width * frameScale;
+    const slotCenterYOnScreen = stageCenterY + normOffsetY * stageRect.height * frameScale;
+
+    const slotWidthOnScreen = (slot.w / FRAME_W) * stageRect.width * frameScale;
+    const slotHeightOnScreen = (slot.h / FRAME_H) * stageRect.height * frameScale;
+
+    const slotLeftOnScreen = slotCenterXOnScreen - slotWidthOnScreen / 2;
+    const slotTopOnScreen = slotCenterYOnScreen - slotHeightOnScreen / 2;
+
+    // 4. 화면 좌표를 비디오 원본 픽셀 좌표계로 매핑
+    const videoScaleX = video.videoWidth / videoRect.width;
+    const videoScaleY = video.videoHeight / videoRect.height;
+
+    let sourceX = (slotLeftOnScreen - videoRect.left) * videoScaleX;
+    let sourceY = (slotTopOnScreen - videoRect.top) * videoScaleY;
+    let sourceWidth = slotWidthOnScreen * videoScaleX;
+    let sourceHeight = slotHeightOnScreen * videoScaleY;
+
+    // 5. 비디오 경계 오차 보정
+    if (sourceX < 0) {
+      sourceWidth += sourceX;
+      sourceX = 0;
     }
+    if (sourceY < 0) {
+      sourceHeight += sourceY;
+      sourceY = 0;
+    }
+    sourceWidth = Math.min(sourceWidth, video.videoWidth - sourceX);
+    sourceHeight = Math.min(sourceHeight, video.videoHeight - sourceY);
 
-    // 3. 슬롯의 절대좌표(x, y, w, h)를 1181x1748 전체 비율상 위치로 정규화(0.0 ~ 1.0)
-    const normX = slot.x / FRAME_W;
-    const normY = slot.y / FRAME_H;
-    const normW = slot.w / FRAME_W;
-    const normH = slot.h / FRAME_H;
-
-    // 4. 비디오 가시 영역 내의 실제 픽셀 좌표 매핑
-    let sourceX = visibleVLeft + normX * visibleVWidth;
-    let sourceY = visibleVTop + normY * visibleVHeight;
-    let sourceWidth = normW * visibleVWidth;
-    let sourceHeight = normH * visibleVHeight;
-
-    // 5. 셀카(전면 카메라) 좌우 반전 처리
+    // 6. 셀카(전면 카메라) 좌우 반전 보정
     if (facing === 'user') {
-      sourceX = vWidth - sourceX - sourceWidth;
+      sourceX = video.videoWidth - sourceX - sourceWidth;
       ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
-    // 6. 정확한 원본 구역 크롭
+    // 7. 정밀 1:1 캡처
     ctx.drawImage(
       video,
-      Math.max(0, sourceX),
-      Math.max(0, sourceY),
+      sourceX,
+      sourceY,
       sourceWidth,
       sourceHeight,
       0,
@@ -164,7 +175,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     );
 
     return canvas.toDataURL('image/jpeg', 0.95);
-  }, [facing, videoRef]);
+  }, [facing, frameScale, videoRef]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
@@ -246,12 +257,11 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-        {/* CP1300 인쇄 비율(1181/1748) 적용 스테이지 */}
+        {/* CP1300 인쇄 비율(1181/1748) 스테이지 */}
         <div 
           ref={stageRef}
           className="relative w-full max-w-sm aspect-[1181/1748] rounded-2xl overflow-hidden shadow-2xl bg-black"
         >
-          {/* 고정된 카메라 비디오 스트림 */}
           <div className="absolute inset-0 camera-stage">
             <video
               ref={videoRef}
@@ -263,7 +273,6 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
             />
           </div>
 
-          {/* 이동 및 Zoom In 연출용 프레임 오버레이 */}
           <div
             className="absolute inset-0 pointer-events-none transition-transform duration-500 ease-in-out"
             style={{
@@ -278,7 +287,6 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
 
           {flash && <div className="flash-overlay animate-flash" />}
 
-          {/* 촬영 상태 표시 뱃지 */}
           {(phase === 'countdown' || phase === 'shooting') && (
             <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-sm px-3.5 py-1.5 rounded-full font-body z-10 flex items-center gap-2 border border-white/20 shadow-md">
               <span>
@@ -327,7 +335,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
           )}
         </div>
 
-        {/* 하단 사진 썸네일 스트립 */}
+        {/* 하단 썸네일 */}
         {shots.length > 0 && (
           <div className="w-full max-w-sm">
             <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
@@ -359,7 +367,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
           </div>
         )}
 
-        {/* 대기 메뉴 */}
+        {/* 타이머 / 프레임 선택 */}
         {phase === 'idle' && (
           <div className="w-full max-w-sm flex flex-col gap-3">
             <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-brand-100">
