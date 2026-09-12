@@ -16,9 +16,14 @@ interface FilterOption {
 const FILTER_OPTIONS: FilterOption[] = [
   { id: 'normal', name: '원본', cssFilter: 'none' },
   { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
-  // 🔽 기존 blur(1px) 이상의 과도한 뭉개짐을 피하고, contrast를 96%로 살짝 낮춰 모공 음영을 누른 밸런스 값입니다.
-  { id: 'warm', name: '뽀샤시', cssFilter: 'blur(0.4px) brightness(106%) contrast(96%) saturate(105%)' },
-  { id: 'vintage', name: '빈티지', cssFilter: 'sepia(40%) contrast(110%) brightness(90%)' },
+  { 
+    id: 'warm', 
+    name: '뽀샤시', 
+    // 💡 블러 수치를 0.6px로 살짝 올려 피부를 더 부드럽게 뭉개고, 
+    // Brightness(110%)와 Contrast(92%) 조합으로 모공 음영을 강력하게 지워줍니다.
+    cssFilter: 'blur(0.6px) brightness(110%) contrast(92%) saturate(106%)' 
+  },
+  { id: 'vintage', name: '빈티지', cssFilter: 'sepia(35%) contrast(105%) brightness(95%)' },
 ];
 
 type Props = {
