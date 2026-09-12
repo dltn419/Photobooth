@@ -1,6 +1,6 @@
 // src/CameraView.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Camera, SwitchCamera, Check, X, AlertCircle, CameraOff, Timer, Sparkles } from 'lucide-react';
+import { Camera, SwitchCamera, Check, X, AlertCircle, CameraOff, Timer } from 'lucide-react';
 import { useCamera } from './useCamera';
 import { builtinFrames, bundledFrames } from './frames';
 import {
@@ -17,16 +17,6 @@ import {
   type Photo,
 } from './types';
 
-// 보정 필터 옵션 정의
-const PHOTO_FILTERS = [
-  { id: 'none', name: '원본', css: 'none' },
-  { id: 'bright', name: '뽀샤시', css: 'brightness(1.08) contrast(1.05) saturate(1.1)' },
-  { id: 'vintage', name: '빈티지', css: 'sepia(0.25) contrast(0.95) saturate(0.85) brightness(1.02)' },
-  { id: 'bw', name: '흑백', css: 'grayscale(1) contrast(1.15) brightness(1.05)' },
-] as const;
-
-type FilterId = typeof PHOTO_FILTERS[number]['id'];
-
 type Props = {
   initialFrame?: FrameTemplate;
   timerSeconds?: number;
@@ -40,7 +30,6 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     initialFrame ?? builtinFrames[0]
   );
   const [selectedTimer, setSelectedTimer] = useState<number>(timerSeconds);
-  const [selectedFilter, setSelectedFilter] = useState<FilterId>('bright'); // 기본값: 뽀샤시
   const [phase, setPhase] = useState<'idle' | 'countdown' | 'shooting' | 'done'>('idle');
   const [countdown, setCountdown] = useState<number>(selectedTimer);
   const [shots, setShots] = useState<Photo[]>([]);
@@ -55,8 +44,6 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
   const activeTake = takeIndexForShot(currentShot);
   const activeSlot = selectedFrame.slots[activeSlotIndex];
   const zooming = phase === 'countdown' || phase === 'shooting';
-
-  const currentFilterCss = PHOTO_FILTERS.find((f) => f.id === selectedFilter)?.css ?? 'none';
 
   useEffect(() => {
     startCamera(facing);
@@ -73,7 +60,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     img.src = selectedFrame.overlayUrl;
   }, [selectedFrame.overlayUrl]);
 
-  // 프레임 이동 및 줌 스케일 계산
+  // 프레임 이동 및 줌 스케일 계산 (CP1300 해상도 1181x1748 기반)
   const targetCenterX = activeSlot ? activeSlot.x + activeSlot.w / 2 : FRAME_W / 2;
   const targetCenterY = activeSlot ? activeSlot.y + activeSlot.h / 2 : FRAME_H / 2;
 
@@ -110,20 +97,23 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     }
   }, [selectedFrame, overlayImg, zooming, activeSlot]);
 
-  // [필터 보정 적용 정밀 캡처]
+  // [화면 빨간 테두리 DOM 연동 및 object-cover 렌더링 보정 정밀 캡처]
   const captureVisibleArea = useCallback((slot: typeof activeSlot) => {
     const video = videoRef.current;
     const stage = stageRef.current;
     if (!video || !slot || !stage || !video.videoWidth || !video.videoHeight) return null;
 
+    // 1. 슬롯 원본 해상도의 오프스크린 캔버스 생성
     const canvas = document.createElement('canvas');
     canvas.width = slot.w;
     canvas.height = slot.h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
+    // 2. 화면 실제 DOM 레이아웃 측정
     const stageRect = stage.getBoundingClientRect();
 
+    // 3. UI Transform(Scale + Translate) 계산을 반영한 화면상 슬롯 Bounding Box 산출
     const offsetXPx = ((FRAME_W / 2 - targetCenterX) / FRAME_W) * stageRect.width * frameScale;
     const offsetYPx = ((FRAME_H / 2 - targetCenterY) / FRAME_H) * stageRect.height * frameScale;
 
@@ -142,6 +132,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     const boxLeftOnScreen = slotCenterXOnScreen - boxWidthOnScreen / 2;
     const boxTopOnScreen = slotCenterYOnScreen - boxHeightOnScreen / 2;
 
+    // 4. object-cover로 인해 비디오 원본에서 가려진/잘린 영역(Crop Inset) 계산
     const vWidth = video.videoWidth;
     const vHeight = video.videoHeight;
     const videoAspect = vWidth / vHeight;
@@ -160,6 +151,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
       cropY = (vHeight - renderVHeight) / 2;
     }
 
+    // 5. 화면 좌표 -> 비디오 원본 픽셀 좌표 매핑
     const normX = (boxLeftOnScreen - stageRect.left) / stageRect.width;
     const normY = (boxTopOnScreen - stageRect.top) / stageRect.height;
     const normW = boxWidthOnScreen / stageRect.width;
@@ -170,16 +162,14 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     let sourceWidth = normW * renderVWidth;
     let sourceHeight = normH * renderVHeight;
 
-    // 캔버스 필터 적용 (보정 효과)
-    ctx.filter = currentFilterCss;
-
-    // 셀카 좌우 반전 처리
+    // 6. 셀카(전면 카메라) 좌우 반전 보정
     if (facing === 'user') {
       sourceX = vWidth - sourceX - sourceWidth;
       ctx.translate(slot.w, 0);
       ctx.scale(-1, 1);
     }
 
+    // 7. 정밀 1:1 캡처 (경계 영역 안전 바운딩)
     ctx.drawImage(
       video,
       Math.max(0, sourceX),
@@ -193,7 +183,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
     );
 
     return canvas.toDataURL('image/jpeg', 0.95);
-  }, [facing, frameScale, targetCenterX, targetCenterY, videoRef, currentFilterCss]);
+  }, [facing, frameScale, targetCenterX, targetCenterY, videoRef]);
 
   const runSequence = useCallback(async () => {
     const collected: Photo[] = [];
@@ -275,7 +265,7 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
-        {/* 라이브 비디오 및 스테이지 */}
+        {/* CP1300 인쇄 비율(1181/1748) 스테이지 */}
         <div 
           ref={stageRef}
           className="relative w-full max-w-sm aspect-[1181/1748] rounded-2xl overflow-hidden shadow-2xl bg-black"
@@ -286,11 +276,8 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
               autoPlay
               playsInline
               muted
-              className="absolute inset-0 w-full h-full object-cover transition-[filter] duration-300"
-              style={{
-                transform: facing === 'user' ? 'scaleX(-1)' : 'none',
-                filter: currentFilterCss, // 라이브 프리뷰 화면에도 선택한 보정 효과 즉시 적용
-              }}
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
             />
           </div>
 
@@ -396,10 +383,9 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
           </div>
         )}
 
-        {/* 타이머 / 필터 / 프레임 선택 옵션 */}
+        {/* 타이머 / 프레임 선택 */}
         {phase === 'idle' && (
-          <div className="w-full max-w-sm flex flex-col gap-2.5">
-            {/* 타이머 선택 */}
+          <div className="w-full max-w-sm flex flex-col gap-3">
             <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-brand-100">
               <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
                 <Timer size={14} className="text-brand-500" /> 타이머
@@ -421,32 +407,9 @@ export function CameraView({ initialFrame, timerSeconds = 5, onComplete, onCance
               </div>
             </div>
 
-            {/* 보정 필터 선택 (새로 추가됨) */}
-            <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-brand-100">
-              <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                <Sparkles size={14} className="text-brand-500" /> 필터 보정
-              </span>
-              <div className="flex gap-1">
-                {PHOTO_FILTERS.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => setSelectedFilter(f.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                      selectedFilter === f.id
-                        ? 'bg-brand-500 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {f.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 프레임 선택 */}
             {framesList.length > 1 && (
-              <div className="mt-1">
-                <p className="text-xs text-gray-500 mb-1 text-center font-body">촬영할 프레임</p>
+              <div>
+                <p className="text-xs text-gray-500 mb-1.5 text-center font-body">촬영할 프레임</p>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 items-center justify-center">
                   {framesList.map((f) => (
                     <button
