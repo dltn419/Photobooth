@@ -4,6 +4,7 @@ export function composeFinalImage(
   frame: FrameTemplate,
   photos: Record<string, Photo>,
   customFrameImage: HTMLImageElement | null,
+  filterCss: string = 'none', // 4번째 인자로 필터 CSS 수신
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = FRAME_W;
@@ -18,7 +19,7 @@ export function composeFinalImage(
   ctx.fillStyle = frame.bgColor;
   ctx.fillRect(0, 0, FRAME_W, FRAME_H);
 
-  // Draw each photo into its slot
+  // Draw each photo into its slot with the active filter
   for (const slot of frame.slots) {
     if (!slot.photoId) continue;
     const photo = photos[slot.photoId];
@@ -27,10 +28,14 @@ export function composeFinalImage(
     const img = new Image();
     img.src = photo.src;
 
-    // Draw with object-fit: cover behavior
+    // 사진에만 필터 적용 후 restore로 상태 복구
+    ctx.save();
+    ctx.filter = filterCss;
     drawImageCover(ctx, img, slot.x, slot.y, slot.w, slot.h);
+    ctx.restore();
   }
 
+  // 오버레이 및 장식 텍스트는 필터의 영향을 받지 않고 원본 상태 유지
   if (customFrameImage) {
     ctx.drawImage(customFrameImage, 0, 0, FRAME_W, FRAME_H);
   } else if (frame.decorations) {
