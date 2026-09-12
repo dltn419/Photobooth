@@ -1,8 +1,26 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Download, ArrowLeft, RotateCcw, Check } from 'lucide-react';
+import { Download, ArrowLeft, RotateCcw, Check, Sparkles } from 'lucide-react';
 import { defaultSlots, bundledFrames } from './frames';
 import { APP_TITLE, FRAME_W, FRAME_H, SLOT_COUNT, type FrameTemplate, type Photo } from './types';
 import { composeFinalImage, canvasToJpgBlob, downloadBlob } from './compose';
+
+// 필터 프리셋 정의
+export type FilterType = 'normal' | 'grayscale' | 'sepia' | 'vintage' | 'warm' | 'cool';
+
+interface FilterOption {
+  id: FilterType;
+  name: string;
+  cssFilter: string;
+}
+
+const FILTER_OPTIONS: FilterOption[] = [
+  { id: 'normal', name: '원본', cssFilter: 'none' },
+  { id: 'grayscale', name: '흑백', cssFilter: 'grayscale(100%)' },
+  { id: 'sepia', name: '세피아', cssFilter: 'sepia(80%)' },
+  { id: 'vintage', name: '빈티지', cssFilter: 'sepia(40%) contrast(110%) brightness(90%)' },
+  { id: 'warm', name: '뽀샤시', cssFilter: 'brightness(108%) contrast(95%) saturate(110%)' },
+  { id: 'cool', name: '쿨톤', cssFilter: 'hue-rotate(180deg) saturate(80%) brightness(105%)' },
+];
 
 type Props = {
   photos: Photo[];
@@ -18,9 +36,12 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     return map;
   });
   const [overlayImg, setOverlayImg] = useState<HTMLImageElement | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<FilterType>('normal');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const previewRef = useRef<HTMLCanvasElement>(null);
+
+  const activeFilterCss = FILTER_OPTIONS.find((f) => f.id === selectedFilter)?.cssFilter ?? 'none';
 
   const photosForSlot = (slotIndex: number) =>
     photos.filter((p) => p.slotIndex === slotIndex).sort((a, b) => a.takeIndex - b.takeIndex);
@@ -60,6 +81,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     ctx.fillStyle = frame.bgColor;
     ctx.fillRect(0, 0, FRAME_W, FRAME_H);
 
+    // 슬롯 사진 그리기 (선택된 필터 적용)
     for (const slot of frame.slots) {
       if (!slot.photoId) {
         ctx.fillStyle = 'rgba(0,0,0,0.08)';
@@ -70,7 +92,12 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
       if (!photo) continue;
       const img = new Image();
       img.onload = () => {
+        ctx.save();
+        ctx.filter = activeFilterCss;
         drawImageCover(ctx, img, slot.x, slot.y, slot.w, slot.h);
+        ctx.restore();
+
+        // 필터 영향 안 받는 오버레이 프레임 재합성
         if (overlayImg) ctx.drawImage(overlayImg, 0, 0, FRAME_W, FRAME_H);
       };
       img.src = photo.src;
@@ -79,7 +106,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     if (overlayImg) {
       ctx.drawImage(overlayImg, 0, 0, FRAME_W, FRAME_H);
     }
-  }, [frame, photoMap, overlayImg]);
+  }, [frame, photoMap, overlayImg, activeFilterCss]);
 
   useEffect(() => {
     const timer = setTimeout(drawPreview, 50);
@@ -113,6 +140,7 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
   };
 
   const handleReset = () => {
+    setSelectedFilter('normal');
     setFrame({
       ...initialFrame,
       slots: defaultSlots.map((s, i) => ({
@@ -127,7 +155,8 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
     setSaved(false);
     try {
       await preloadImages(photoMap, frame);
-      const canvas = composeFinalImage(frame, photoMap, overlayImg);
+      // composeFinalImage에 선택한 activeFilterCss를 4번째 인자로 전달
+      const canvas = composeFinalImage(frame, photoMap, overlayImg, activeFilterCss);
       const blob = await canvasToJpgBlob(canvas, 0.95);
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       downloadBlob(blob, `파천네컷_${date}.jpg`);
@@ -193,6 +222,44 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
         </div>
 
         <div className="w-full lg:w-80 flex flex-col gap-6">
+          {/* 필터 선택바 */}
+          <div>
+            <div className="flex items-center gap-1.5 text-sm font-display text-gray-700 mb-2">
+              <Sparkles size={16} className="text-brand-500" />
+              <span>사진 필터</span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+              {FILTER_OPTIONS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setSelectedFilter(f.id)}
+                  className={`flex-shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-xl border transition-all ${
+                    selectedFilter === f.id
+                      ? 'border-brand-500 bg-brand-50/50 ring-2 ring-brand-300 scale-105'
+                      : 'border-gray-200 hover:border-brand-300 bg-white'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
+                    {photos[0] ? (
+                      <img
+                        src={photos[0].src}
+                        alt={f.name}
+                        className="w-full h-full object-cover"
+                        style={{ filter: f.cssFilter }}
+                      />
+                    ) : (
+                      <div
+                        className="w-full h-full bg-gradient-to-tr from-rose-400 to-amber-300"
+                        style={{ filter: f.cssFilter }}
+                      />
+                    )}
+                  </div>
+                  <span className="text-[11px] font-medium text-gray-700">{f.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {bundledFrames.length > 1 && (
             <div>
               <h3 className="font-display text-sm text-gray-700 mb-2">프레임 변경</h3>
@@ -239,7 +306,12 @@ export function EditView({ photos, initialFrame, onBack }: Props) {
                               : 'border-gray-200 hover:border-brand-300'
                           }`}
                         >
-                          <img src={photo.src} alt="" className="w-full h-full object-cover" />
+                          <img
+                            src={photo.src}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            style={{ filter: activeFilterCss }}
+                          />
                           <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
                             {photo.takeIndex + 1}번째
                           </span>
