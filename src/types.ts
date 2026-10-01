@@ -22,7 +22,7 @@ export type FrameTemplate = {
   decorations?: string;
 };
 
-export const APP_TITLE = '파파천 네컷';
+export const APP_TITLE = '파천 네컷';
 export const FRAME_W = 1181;
 export const FRAME_H = 1748;
 export const SLOT_COUNT = 4;
